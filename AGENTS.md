@@ -2,18 +2,22 @@
 
 ## 프로젝트 목적
 
-CSV 기반 Power BI 모델을 SQLite 기반 Data Warehouse로 전환한다.
+SmartHRD Demo 버전은 CSV Warehouse 기반 자동 데이터 파이프라인을 구축한다.
 
-Power BI는 시각화만 담당한다.
+Power BI는 분석과 시각화만 담당한다.
+데이터 생성, 검증, 교체, 로그 기록은 Python ETL이 담당한다.
 
 ---
 
 ## 반드시 먼저 읽기
 
-1. docs/PRD.md
-2. docs/DATA_SPEC.md
-3. docs/ARCHITECTURE.md
-4. docs/IMPLEMENTATION_PLAN.md
+1. README.md
+2. BACKLOG.md
+3. docs/PRD.md
+4. docs/DATA_SPEC.md
+5. docs/ARCHITECTURE.md
+6. docs/IMPLEMENTATION_PLAN.md
+7. docs/CSV_WAREHOUSE_PLATFORM.md
 
 ---
 
@@ -23,64 +27,59 @@ Power BI는 시각화만 담당한다.
 
 기존 대시보드와 동일한 결과를 유지해야 한다.
 
----
+### 2. CSV Warehouse 구조를 유지한다.
 
-### 2. API 원본 데이터는 보존한다.
+Demo 버전에서는 SQLite, PostgreSQL, Cloud DW를 구현하지 않는다.
 
-API 응답 컬럼은 raw 계층에서 삭제하거나 수정하지 않는다.
+### 3. API 원본 데이터는 보존한다.
 
----
+API 응답 컬럼은 수집/warehouse 계층에서 임의로 삭제하거나 수정하지 않는다.
 
-### 3. ETL은 다음 순서를 따른다.
+### 4. ETL 순서
 
+```text
 Extract
+-> Validate
+-> Publish
+-> Logging
+```
 
-↓
-
-Validate
-
-↓
-
-Transform
-
-↓
-
-Load
-
----
-
-### 4. API Key
+### 5. API Key
 
 절대 코드에 작성하지 않는다.
 
-.env 사용.
+`.env`를 사용한다.
 
----
+### 6. CSV 교체
 
-### 5. DB 적재
+Validation 실패 시 기존 `warehouse/current` CSV를 유지한다.
 
-SQLite를 사용한다.
+절대 실패 산출물로 current CSV를 덮어쓰지 않는다.
 
-CSV는 Export 용도로만 사용한다.
+### 7. 로그
 
----
+모든 ETL 실행 결과는 CSV 로그로 기록한다.
 
-### 6. 로그
-
-모든 ETL 실행 결과는 기록한다.
-
-- 시작시간
-- 종료시간
-- 성공여부
-- 수집건수
-- 오류메시지
+- run_id
+- started_at
+- finished_at
+- dataset
+- status
+- expected_count
+- actual_count
+- duration_seconds
+- message
 
 ---
 
 ## 구현 순서
 
-1. 데이터 분석
-2. SQLite 구축
-3. ETL 구현
-4. Power BI 연결
-5. 자동화
+1. 현재 수집 스크립트 분석
+2. 수집 스크립트 리팩토링
+3. Validation 추가
+4. ETL Logging 추가
+5. CSV Warehouse 구조 정리
+6. Windows Scheduler 실행 스크립트 작성
+7. Power BI Gateway 운영 문서 작성
+8. Power BI 운영 현황 Dashboard 설계
+

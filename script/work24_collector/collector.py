@@ -29,7 +29,7 @@ def collect_period(
     api_key: str,
     start: str,
     end: str,
-) -> None:
+) -> dict[str, Any]:
     run_id = f"{spec.code}_{start}_{end}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
     cp_path = checkpoint_path(settings.checkpoint_dir, spec, start, end)
     out_path = output_file_path(settings.output_dir, spec, start, end, settings.simple_filename)
@@ -138,7 +138,7 @@ def collect_period(
                 f"rows={collected_count}/{expected_count}, next_page={next_page}, skip"
             )
             log_success(settings, log_row, expected_count, collected_count)
-            return
+            return log_row
 
         print(f"Collect {spec.display_name} {start}-{end}: expected {expected_count}, pages {total_pages}")
 
@@ -190,6 +190,7 @@ def collect_period(
 
         log_success(settings, log_row, expected_count, collected_count)
         print(f"Saved {collected_count} rows: {out_path}")
+        return log_row
 
     except Exception as exc:
         failure_next_page = max(next_page, 1)

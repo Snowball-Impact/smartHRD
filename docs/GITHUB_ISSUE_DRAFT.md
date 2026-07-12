@@ -1,95 +1,40 @@
-# GitHub Issue Draft
+# CSV Warehouse 정기 ETL Demo 파이프라인 준비
 
-## Title
+## 오늘 작업 사항
 
-Work24 CSV collection stabilization and SQLite DW update strategy
+- 프로젝트 방향을 SQLite DW에서 CSV Warehouse 기반 Demo 데이터 플랫폼으로 정리했습니다.
+- README, AGENTS, PRD, DATA_SPEC, ARCHITECTURE, IMPLEMENTATION_PLAN을 CSV Warehouse 운영 기준으로 갱신했습니다.
+- Demo ETL 진입점 `script/csv_warehouse_etl.py`를 추가했습니다.
+  - 오늘 날짜 기준 refresh window 계산
+  - `--months-back`, `--months-forward` 인자 지원
+  - 고용24 API 월별 수집
+  - tmp CSV 생성
+  - Validation 통과 시 current CSV 교체
+  - Validation 실패 시 기존 current CSV 유지
+  - `warehouse/logs/etl_log.csv` 기록
+- Windows Task Scheduler용 `script/run_csv_warehouse_etl.bat`를 추가했습니다.
+  - 기본값은 과거 6개월 / 미래 6개월
+  - 실행 인자 또는 `SMART_HRD_MONTHS_BACK`, `SMART_HRD_MONTHS_FORWARD` 환경변수로 범위 변경 가능
+- CSV Warehouse 운영 문서 `docs/CSV_WAREHOUSE_PLATFORM.md`를 추가했습니다.
+- 기존 collector가 ETL에서 expected_count를 집계할 수 있도록 수집 결과를 반환하게 수정했습니다.
+- `python -m py_compile` 및 배치 파일 `--help` 전달 동작을 확인했습니다.
 
-## Body
+## 현재 보류한 사항
 
-## Summary
+- 실제 API key / 네트워크 환경에서 end-to-end 정기 ETL 리허설은 다음 주에 수행합니다.
+- Power BI 원본 경로는 현재 변경하지 않습니다.
+- 운영 ETL 로그 파일은 실제 ETL 실행 시 `warehouse/logs/etl_log.csv`로 생성됩니다.
 
-This issue records the completed stabilization work for the Work24 API collection pipeline and the design decisions for the upcoming SQLite Data Warehouse migration.
+## 다음 작업
 
-## Completed
+- [ ] 다음 주 정기 업데이트 전 `.env` API key 확인
+- [ ] `script/run_csv_warehouse_etl.bat` 또는 `script/csv_warehouse_etl.py`로 수동 리허설 실행
+- [ ] `warehouse/logs/etl_log.csv` 생성 및 PASS/FAIL 확인
+- [ ] FAIL 발생 시 `message`와 월별 `api_collection_runs.csv` 확인
+- [ ] PASS 발생 시 `warehouse/current/training_course.csv` 생성/교체 확인
+- [ ] Validation 기준이 실제 API 데이터에 너무 엄격한지 확인
+- [ ] 필요 시 필수 컬럼 NULL 허용 정책 조정
 
-- Refactored monthly Work24 API collection into reusable Python modules.
-- Added `.env` based API key loading.
-- Added checkpoint/resume support.
-- Added chunk append CSV writes.
-- Added intermediate save logs with file path, row count, timestamp, and speed.
-- Added conservative parallel page fetching with `--workers`.
-- Added `all` and `non-national-card` API groups.
-- Moved Work24 CSV outputs under `dataset/work24/monthly` and `dataset/work24/yearly`.
-- Added yearly CSV merge script for Power BI-friendly yearly snapshots.
-- Added checkpoint-based validation to prevent incomplete monthly CSV files from being merged.
-- Added existing-vs-new yearly CSV comparison script.
-- Documented observed yearly changes and the need for row-hash based change detection.
-- Documented daily rolling refresh policy.
+## 참고
 
-## Current Refresh Policy
-
-Scheduled refresh:
-
-```text
-Daily rolling refresh:
-current month -12 months through current month +6 months
-```
-
-Manual refresh:
-
-```text
-Full available period only when API behavior changes, data quality investigation is needed, or historical validation is required.
-```
-
-## SQLite DW Direction
-
-First SQLite implementation should prioritize raw/current stability before dimensional modeling.
-
-Initial table direction:
-
-```text
-raw_current_<api>
-etl_run_log
-row_change_event
-```
-
-Update strategy:
-
-- Keep latest row values in current tables.
-- Use row identity key plus `row_hash` for upsert/change detection.
-- Store lightweight `row_change_event` records.
-- Do not store full old/new row values in the first version.
-
-## Row Identity Candidate
-
-```text
-source_api
-trprId
-trprDegr
-trainstCstId
-traStartDate
-traEndDate
-```
-
-This candidate must still be validated across all target monthly/yearly CSVs before final SQLite constraints are created.
-
-## Key Documents
-
-- `README.md`
-- `docs/NEXT_CONTEXT_HANDOFF.md`
-- `docs/API_MONTHLY_COLLECTION.md`
-- `docs/REFRESH_POLICY.md`
-- `docs/DW_UPDATE_STRATEGY.md`
-- `docs/YEARLY_CHANGE_ANALYSIS.md`
-- `docs/DATA_SPEC.md`
-- `docs/ARCHITECTURE.md`
-- `docs/IMPLEMENTATION_PLAN.md`
-
-## Next Work
-
-- Add refresh-window date calculation to the collection CLI.
-- Profile actual CSV files for columns, types, nulls, duplicates, PK/FK candidates, and date columns.
-- Design SQLite `raw_current_<api>`, `etl_run_log`, and `row_change_event`.
-- Implement row-hash based SQLite upsert.
-- Validate SQLite outputs against current CSV/yearly snapshots.
-
+Demo 운영 기준에서는 Power BI가 기존 원본을 계속 사용하므로, CSV Warehouse current 파일은 당장 대시보드에 연결하지 않습니다.

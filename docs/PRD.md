@@ -1,58 +1,65 @@
-# SmartHRD Data Warehouse PRD
+# SmartHRD CSV Warehouse PRD
 
 ## 프로젝트 목적
 
-현재 SmartHRD는 CSV 기반으로 데이터를 관리하고 있다.
+현재 SmartHRD는 고용24 API 데이터를 CSV로 수집한 뒤 Power BI에서 직접 읽어 운영한다.
 
-데이터 수집 주기가 월 단위이며,
-Power BI가 데이터 저장과 분석 역할을 동시에 수행하고 있다.
-
-SQLite 기반 Data Warehouse를 구축하여
-데이터 저장과 분석을 분리한다.
+이번 Demo 버전의 목적은 CSV를 제거하는 것이 아니라, CSV를 Warehouse 저장소로 인정하고 자동 수집, 검증, 교체, 로그 기록까지 포함한 운영 가능한 데이터 플랫폼을 구축하는 것이다.
 
 ---
 
 ## 문제점
 
-- CSV 파일 증가
 - 수동 업데이트
 - 최신 데이터 반영 어려움
-- Power BI 모델 복잡도 증가
-- 데이터 재사용 어려움
+- 실패한 수집 파일이 Power BI 원본을 덮어쓸 위험
+- 수집/검증/발행/로그 단계가 명확히 분리되지 않음
+- Power BI Service 예약 새로고침 운영 문서 부족
 
 ---
 
 ## 목표
 
-### 기능
-
-- API 자동 수집
-- SQLite 저장
-- Power BI 연결
-- Fabric 새로고침 지원
+- Python ETL 자동 실행
+- 고용24 API 자동 수집
+- Validation 통과 시에만 current CSV 교체
+- 실패 시 기존 current CSV 유지
+- ETL 로그 CSV 기록
+- Windows Task Scheduler 연동
+- On-premises Data Gateway 기반 Power BI Service 예약 새로고침 지원
 
 ---
 
 ## 범위
 
-포함
+포함:
 
 - 고용24 API
+- CSV Warehouse
+- Python ETL
+- Validation
+- ETL Logging
+- Windows Scheduler
+- Power BI Gateway / Fabric 예약 새로고침
+
+제외:
+
 - SQLite
-- ETL
-- Power BI
-
-제외
-
-- Cloud DW
-- 웹서비스
+- PostgreSQL
+- Cloud Data Warehouse
+- Airflow
+- Docker
+- Kubernetes
 - AI Agent
+- 운영 콘솔
 
 ---
 
 ## 성공 기준
 
-- ETL 자동 실행 가능
-- CSV 제거
-- Power BI 동일 결과
-- SQLite를 단일 데이터 저장소로 사용
+- 매주 토요일 새벽 ETL 자동 실행 가능
+- 과거 6개월 ~ 미래 6개월 범위 자동 수집 가능
+- `warehouse/current/training_course.csv`가 Power BI의 안정 원본으로 유지됨
+- Validation 실패 시 기존 current CSV가 보존됨
+- `warehouse/logs/etl_log.csv`로 운영 현황을 Power BI에서 시각화 가능
+

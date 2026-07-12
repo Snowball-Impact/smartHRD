@@ -4,114 +4,141 @@
 
 ### 고용24 Open API
 
-국민내일배움카드 훈련과정 조회
+훈련과정 목록 API:
+
+| Dataset | Endpoint |
+| --- | --- |
+| 국민내일배움카드훈련과정 | `310L01` |
+| 사업주훈련 | `311L01` |
+| 국가인적자원개발 컨소시엄 | `312L01` |
+| 일학습병행 | `313L01` |
 
 ---
 
 ## 수집 방식
 
-현재
+현재:
 
+```text
 API
+-> CSV
+-> Power BI
+```
 
-↓
+Demo 목표:
 
-CSV
-
-↓
-
-Power BI
-
-향후
-
+```text
 API
-
-↓
-
-SQLite
-
-↓
-
-Power BI
+-> Python ETL
+-> Validation
+-> CSV Warehouse current
+-> Power BI Service scheduled refresh
+```
 
 ---
 
 ## 수집 주기
 
-현재
+- 매주 토요일 새벽
+- 기본값은 현재월 기준 과거 6개월 ~ 미래 6개월
+- `--months-back`, `--months-forward` 인자로 수집 범위 변경 가능
+- 매주 전체 범위를 다시 수집하여 current CSV를 교체
+- 증분 업데이트는 Demo에서 구현하지 않음
 
-월 단위 CSV 수집 및 수동 갱신
-
-목표
-
-daily rolling refresh
+예시 기준일 `2026-07-12`:
 
 ```text
-현재월 기준 과거 12개월 ~ 미래 6개월
+2026-01-01 ~ 2027-01-31
 ```
 
-Manual full refresh는 필요 시에만 수행한다.
+---
+
+## CSV Warehouse 산출물
+
+Power BI 원본:
+
+```text
+warehouse/current/training_course.csv
+```
+
+실패 방지용 임시 파일:
+
+```text
+warehouse/tmp/<run_id>/training_course.tmp.csv
+```
+
+기존 current 백업:
+
+```text
+warehouse/backup/training_course_<run_id>.csv
+```
+
+ETL 로그:
+
+```text
+warehouse/logs/etl_log.csv
+```
 
 ---
 
 ## 주요 컬럼
 
+API 원본 컬럼은 보존한다.
+
+Demo ETL은 운영 추적을 위해 다음 메타 컬럼을 앞에 추가한다.
+
 | 컬럼 | 설명 |
-|--------|------|
-| TRPR_ID | 훈련과정ID |
-| TRPR_DEGR | 훈련과정 회차 |
-| INST_CD | 기관코드 |
-| NCS_CD | NCS코드 |
-| TRA_START_DATE | 훈련시작일 |
+| --- | --- |
+| `source_api` | API 코드 |
+| `source_dataset` | 데이터셋 표시명 |
+| `source_period` | 수집 월 |
+
+주요 원본 컬럼:
+
+| 컬럼 | 설명 |
+| --- | --- |
+| `trprId` | 훈련과정 ID |
+| `trprDegr` | 훈련과정 회차 |
+| `trainstCstId` | 훈련기관 고객 ID |
+| `instCd` | 기관 코드 |
+| `ncsCd` | NCS 코드 |
+| `traStartDate` | 훈련 시작일 |
+| `traEndDate` | 훈련 종료일 |
 
 ---
 
-## PK 후보
+## Validation 항목
 
-검증 필요
+- API 호출 성공 여부
+- 예상 건수 == 실제 건수
+- 필수 컬럼 존재 여부
+- 필수 컬럼 NULL/빈값 검증
+- row identity 중복 검증
+- CSV 저장 성공 여부
 
-후보
+필수 컬럼:
+
+```text
+trprId
+trprDegr
+trainstCstId
+traStartDate
+traEndDate
+```
+
+중복 검증 후보:
 
 ```text
 source_api
-TRPR_ID
-TRPR_DEGR
-TRAINST_CST_ID
-TRA_START_DATE
-TRA_END_DATE
+trprId
+trprDegr
+trainstCstId
+traStartDate
+traEndDate
 ```
 
-2024 yearly 비교 기준으로는 위 후보가 중복 없이 동작했다.
-전체 월간/연간 CSV 대상 추가 검증이 필요하다.
+TODO:
 
----
-
-## 데이터 적재 방식
-
-1차 방향
-
-- SQLite current table은 최신값만 유지한다.
-- 동일 row identity가 없으면 insert한다.
-- 동일 row identity가 있고 row_hash가 다르면 update한다.
-- 동일 row identity가 있고 row_hash가 같으면 last_seen_at만 갱신한다.
-- 상세 old/new value history는 1차 구현에서 제외한다.
-- 대신 `row_change_event`에 변경 발생 row와 변경 컬럼 목록을 기록한다.
-
-핵심 테이블 후보:
-
-```text
-raw_current_<api>
-etl_run_log
-row_change_event
-```
-
----
-
-## TODO
-
-- 실제 CSV 컬럼 분석
-- PK 검증
-- 중복 검증
-- NULL 검증
-- row_hash 대상 컬럼 확정
-- row_change_event 컬럼 확정
+- 전체 API/기간에 대한 필수 컬럼 NULL 허용 정책 확정
+- Power BI 기존 모델과 추가 메타 컬럼 영향 검증
+- 운영 현황 Dashboard용 로그 컬럼 확정

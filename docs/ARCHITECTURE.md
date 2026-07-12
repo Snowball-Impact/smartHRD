@@ -2,136 +2,119 @@
 
 ## 현재 구조
 
-API
-
-↓
-
-CSV
-
-↓
-
-Power BI
+```text
+고용24 API
+-> CSV
+-> Power BI
+```
 
 ---
 
-## 목표 구조
+## Demo 목표 구조
 
-Windows Scheduler
+```text
+Windows Task Scheduler
+-> script/run_csv_warehouse_etl.bat
+-> script/csv_warehouse_etl.py
+-> Extract
+-> Validate
+-> Publish
+-> Logging
+-> CSV Warehouse
+-> On-premises Data Gateway
+-> Power BI Service / Fabric scheduled refresh
+-> SmartHRD Dashboard
+```
 
-↓
+---
 
-run_etl.py
+## CSV Warehouse 구조
 
-↓
+```text
+warehouse/
+  current/
+    training_course.csv
+  backup/
+    training_course_<run_id>.csv
+  logs/
+    etl_log.csv
+    api_collection_runs.csv
+  tmp/
+    <run_id>/
+      monthly/
+      checkpoints/
+      training_course.tmp.csv
+```
 
-Extract
+Power BI는 `warehouse/current`만 읽는다.
 
-↓
-
-Validate
-
-↓
-
-Transform
-
-↓
-
-SQLite
-
-↓
-
-Power BI
-
-↓
-
-Fabric
+`warehouse/tmp`와 `warehouse/backup`은 Power BI 원본으로 사용하지 않는다.
 
 ---
 
 ## 수집 정책
 
-정기 수집은 daily rolling refresh 하나만 둔다.
+정기 수집:
 
 ```text
-현재월 기준 과거 12개월
-↓
-현재월 기준 미래 6개월
+매주 토요일 새벽
+현재월 기준 과거 N개월 ~ 미래 N개월
 ```
 
-예시 기준일 2026-07-11:
+Demo에서는 매주 전체 수집 후 current CSV를 교체한다.
 
-```text
-2025-07-01 ~ 2027-01-31
-```
+증분 업데이트는 구현하지 않는다.
 
-weekly/monthly 스케줄은 daily rolling refresh와 겹치므로 제거한다.
-
-Manual full refresh는 API 변경, 데이터 품질 검증, 과거 재검증이 필요할 때만 수행한다.
+기본값은 과거 6개월, 미래 6개월이며 `--months-back`, `--months-forward` 인자로 변경한다.
 
 ---
 
-## DB 구조
-
-raw
-
-↓
-
-staging
-
-↓
-
-dimension
-
-↓
-
-fact
-
-↓
-
-mart
-
----
-
-## 초기 SQLite 테이블 방향
-
-1차 SQLite 구현은 dimension/fact 모델링보다 raw/current 안정화를 우선한다.
-
-초기 후보:
+## ETL 단계
 
 ```text
-raw_current_<api>
-etl_run_log
-row_change_event
-```
-
-`raw_current_<api>`는 최신값만 유지한다.
-
-`row_change_event`는 전체 old/new 값을 저장하지 않고, 변경 발생 row와 변경 컬럼 목록만 기록한다.
-
-자세한 업데이트 전략은 `docs/DW_UPDATE_STRATEGY.md`를 따른다.
-
----
-
-## ETL
-
 Extract
+-> Validate
+-> Publish
+-> Logging
+```
 
-↓
+### Extract
 
-Validate
+고용24 API를 월 단위로 수집한다.
 
-↓
+### Validate
 
-Transform
+- API 호출 성공 여부
+- 예상 건수 == 실제 건수
+- 중복 검증
+- 필수 컬럼 NULL/빈값 검증
+- CSV 저장 성공 여부
 
-↓
+### Publish
 
-Load
+Validation 통과 시:
+
+```text
+기존 current CSV 백업
+-> tmp CSV를 current CSV로 교체
+```
+
+Validation 실패 시:
+
+```text
+기존 current CSV 유지
+```
+
+### Logging
+
+모든 ETL 결과를 `warehouse/logs/etl_log.csv`에 기록한다.
 
 ---
 
-## Power BI
+## Power BI 운영
 
-SQLite를 직접 조회한다.
+Power BI Desktop은 `warehouse/current/training_course.csv`를 데이터 원본으로 사용한다.
 
-Power BI는 데이터를 저장하지 않는다.
+Power BI Service는 On-premises Data Gateway를 통해 예약 새로고침만 수행한다.
+
+PBIX 자동 Publish는 Demo 범위에서 제외한다.

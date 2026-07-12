@@ -2,31 +2,35 @@
 
 ## 분석
 
-- [ ] API 분석 완료
-- [ ] CSV 분석
-- [ ] 데이터 사전 작성
+- [x] 현재 수집 스크립트 분석
+- [ ] Power BI current CSV 연결 영향 검증
+- [ ] 운영 현황 Dashboard 요구사항 확정
 
-## Database
+## CSV Warehouse
 
-- [ ] SQLite 생성
-- [ ] Raw 테이블
-- [ ] Dimension 테이블
-- [ ] Fact 테이블
+- [x] CSV Warehouse 구조 정의
+- [x] current/backup/logs/tmp 정책 정의
+- [x] Validation 실패 시 current 유지 정책 구현
 
 ## ETL
 
-- [ ] API 모듈 분리
-- [ ] Validator 작성
-- [ ] SQLite Loader 작성
+- [x] API 모듈 분리
+- [x] Demo ETL 진입점 작성
+- [x] 주간 refresh window 계산
+- [x] Validator 작성
+- [x] ETL CSV 로그 작성
+- [ ] 실제 API key 환경에서 end-to-end 수집 검증
 
 ## Power BI
 
-- [ ] SQLite 연결
-- [ ] 모델 변경
-- [ ] 검증
+- [ ] Power BI Desktop 원본을 `warehouse/current`로 연결
+- [ ] On-premises Data Gateway 경로 등록
+- [ ] Power BI Service 예약 새로고침 설정
+- [ ] 운영 현황 Dashboard 페이지 설계
 
 ## Automation
 
-- [ ] Windows Scheduler
-- [ ] ETL 로그
-- [ ] Fabric Refresh
+- [x] Windows Scheduler 실행 배치 파일 작성
+- [ ] Windows Scheduler 작업 등록
+- [ ] 토요일 새벽 스케줄 실행 검증
+
