@@ -4,7 +4,7 @@
 
 SmartHRD Demo 버전은 CSV를 Warehouse 저장소로 사용한다.
 
-Python ETL은 고용24 API 데이터를 수집하고, 검증이 통과한 경우에만 Power BI가 읽는 current CSV를 교체한다.
+Python ETL은 고용24 API 데이터를 월별 CSV로 수집하고, 수집이 성공한 경우에만 Power BI가 읽는 yearly CSV를 재생성한다.
 
 ---
 
@@ -62,7 +62,7 @@ script\run_csv_warehouse_etl.bat --months-back 3 --months-forward 9
 python script\csv_warehouse_etl.py --api all --period-retries 2
 ```
 
-ETL 전체가 실패한 뒤 같은 명령을 다시 실행하면 기본적으로 `warehouse/logs/etl_log.csv`의 최신 FAIL run을 찾고, 해당 `warehouse/tmp/<run_id>`를 이어받는다.
+ETL 전체가 실패한 뒤 같은 명령을 다시 실행하면 기본적으로 `warehouse/checkpoints`의 checkpoint를 기준으로 이어받는다.
 
 이때 이미 완료된 월은 checkpoint 기준으로 skip하고, incomplete 월은 처음부터 다시 수집한다.
 
@@ -72,36 +72,33 @@ ETL 전체가 실패한 뒤 같은 명령을 다시 실행하면 기본적으로
 python script\csv_warehouse_etl.py --api all --fresh-run
 ```
 
-특정 run_id를 명시적으로 이어받을 수도 있다.
-
-```powershell
-python script\csv_warehouse_etl.py --api all --resume-run-id 20260720091802
-```
-
 ---
 
 ## Publish 정책
 
-ETL은 먼저 run별 tmp 디렉터리에 데이터를 생성한다.
+ETL은 API/월 단위로 monthly CSV를 생성한다.
 
 ```text
-warehouse/tmp/<run_id>/training_course.tmp.csv
+dataset/work24/monthly/<API명>/<API명>_YYYYMM.csv
 ```
 
-Validation 통과 시:
+수집이 성공하면 Power BI 원본인 yearly CSV를 다시 병합한다.
 
 ```text
-warehouse/current/training_course.csv
--> warehouse/backup/training_course_<run_id>.csv
-
-warehouse/tmp/<run_id>/training_course.tmp.csv
--> warehouse/current/training_course.csv
+dataset/work24/monthly/<API명>/<API명>_YYYYMM.csv
+-> dataset/work24/yearly/<API명>/<API명>_YYYY.csv
 ```
 
-Validation 실패 시:
+수집 또는 병합 실패 시:
 
 ```text
-warehouse/current/training_course.csv 유지
+기존 dataset/work24/yearly CSV 유지
+```
+
+yearly CSV 교체 후에는 파일별 checksum을 비교해 실제 변경 여부를 로그로 남긴다.
+
+```text
+warehouse/logs/data_snapshot_log.csv
 ```
 
 ---
@@ -113,42 +110,40 @@ warehouse/current/training_course.csv 유지
 - API 수집 중 예외 발생 여부
 - API expected_count 힌트와 actual_count 차이 여부
 - 월별 수집 실패 시 설정된 횟수만큼 재시도
-- ETL 재실행 시 최신 실패 run의 checkpoint 기반 재개
-- 필수 컬럼 존재 여부
-- 필수 컬럼 NULL/빈값 여부
-- row identity 중복 여부
-- tmp CSV 생성 여부
+- ETL 재실행 시 checkpoint 기반 재개
+- 월별 CSV 생성 여부
+- yearly CSV 병합 성공 여부
+- yearly CSV checksum 기반 변경 여부 기록
 
 API의 `scn_cnt`는 수집 건수 힌트로 사용한다.
 최종 완료 판정은 페이지를 순회하다가 마지막 페이지가 `page_size`보다 짧아지는 시점으로 판단한다.
 `scn_cnt`와 실제 수집 건수가 다르면 FAIL이 아니라 ETL 로그의 warning message로 남긴다.
 
-필수 컬럼:
+---
+
+## Cleanup
+
+ETL 종료 후 기본 cleanup을 실행한다.
 
 ```text
-trprId
-trprDegr
-traStartDate
-traEndDate
+warehouse/checkpoints/*.json
 ```
 
-중복 기준:
+기본 보존 기간은 30일이다.
 
-```text
-source_api
-trprId
-trprDegr
-trainstCstId
-traStartDate
-traEndDate
+```powershell
+python script\csv_warehouse_etl.py --checkpoint-retention-days 30
 ```
 
-`trainstCstId`는 일부 API/기간에서 비어 있을 수 있으므로 필수 NULL 실패 조건에서는 제외한다.
-다만 row identity 후보에는 남기고, 해당 값이 비어 있는 row는 중복 검증에서 제외한 뒤 warning message로 남긴다.
+cleanup을 건너뛰려면 다음 옵션을 사용한다.
+
+```powershell
+python script\csv_warehouse_etl.py --skip-cleanup
+```
 
 TODO:
 
-- 실제 전체 API 결과에서 필수 컬럼 NULL 정책 검증
+- 실제 전체 API 결과에서 nullable 컬럼 정책 검증
 - Power BI 모델에서 `source_api`, `source_dataset`, `source_period` 추가 컬럼 영향 검증
 
 ---
@@ -159,6 +154,7 @@ TODO:
 
 ```text
 warehouse/logs/etl_log.csv
+warehouse/logs/data_snapshot_log.csv
 ```
 
 컬럼:
@@ -182,14 +178,31 @@ message
 
 Power BI 운영 현황 페이지는 이 로그를 읽는다.
 
+`data_snapshot_log.csv` 컬럼:
+
+```text
+run_id
+created_at
+dataset
+api
+year
+file_path
+row_count
+file_size_bytes
+checksum
+previous_checksum
+is_changed
+message
+```
+
 ---
 
 ## Power BI Gateway 운영
 
 Power BI Desktop:
 
-- 데이터 원본을 `warehouse/current/training_course.csv`로 설정한다.
-- tmp, backup, monthly 폴더는 원본으로 사용하지 않는다.
+- 데이터 원본을 `dataset/work24/yearly`로 설정한다.
+- monthly 폴더와 checkpoint/log 폴더는 주 데이터 원본으로 사용하지 않는다.
 
 Power BI Service:
 
@@ -200,8 +213,8 @@ Power BI Service:
 운영 권장 순서:
 
 1. 로컬에서 ETL 수동 실행
-2. `warehouse/current/training_course.csv` 생성 확인
-3. Power BI Desktop에서 current CSV 연결
+2. `dataset/work24/yearly` CSV 생성 확인
+3. Power BI Desktop에서 yearly CSV 연결
 4. Power BI Service 게시
 5. Gateway 데이터 원본 경로 등록
 6. 매주 ETL 완료 이후 Power BI 예약 새로고침이 실행되도록 시간 조정

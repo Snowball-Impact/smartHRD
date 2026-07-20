@@ -58,7 +58,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=Path("dataset/work24/yearly"),
         help="Yearly CSV root directory.",
     )
-    parser.add_argument("--checkpoint-dir", type=Path, default=Path("logs/checkpoints"), help="Checkpoint directory.")
+    parser.add_argument(
+        "--checkpoint-dir",
+        type=Path,
+        default=Path("warehouse/checkpoints"),
+        help="Checkpoint directory.",
+    )
     parser.add_argument("--encoding", default="utf-8-sig", help="CSV encoding.")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite an existing yearly CSV file.")
     parser.add_argument(

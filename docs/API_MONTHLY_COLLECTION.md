@@ -8,7 +8,7 @@ This document describes the updated monthly Work24 API collection script.
 script/monthly_api_collection.py
 ```
 
-The script keeps the current CSV-based workflow while making monthly collection repeatable from the command line.
+The script keeps the CSV-based monthly workflow while making monthly collection repeatable from the command line.
 
 It does not build SQLite tables yet.
 
@@ -102,13 +102,13 @@ dataset/work24/monthly/국민내일배움카드/국민내일배움카드훈련�
 Run log:
 
 ```text
-logs/api_collection_runs.csv
+warehouse/logs/api_collection_runs.csv
 ```
 
 Checkpoint:
 
 ```text
-logs/checkpoints/national-card_20260601_20260630.json
+warehouse/checkpoints/national-card_20260601_20260630.json
 ```
 
 ## Behavior
@@ -247,7 +247,7 @@ Whenever intermediate data is saved, the terminal prints the chunk row count, to
 Example:
 
 ```text
-Intermediate save [국민내일배움카드훈련과정 20240101-20240131] chunk_rows=10000, total_rows=10000/37880, next_page=101, mode=append, interval=42.8s, interval_rate=2.34 pages/s (234 rows/s), avg_rate=2.31 pages/s (231 rows/s), csv=dataset\work24\monthly\국민내일배움카드\국민내일배움카드훈련과정_202401.csv, checkpoint=logs\checkpoints\national-card_20240101_20240131.json, saved_at=2026-07-11T13:30:00
+Intermediate save [국민내일배움카드훈련과정 20240101-20240131] chunk_rows=10000, total_rows=10000/37880, next_page=101, mode=append, interval=42.8s, interval_rate=2.34 pages/s (234 rows/s), avg_rate=2.31 pages/s (231 rows/s), csv=dataset\work24\monthly\국민내일배움카드\국민내일배움카드훈련과정_202401.csv, checkpoint=warehouse\checkpoints\national-card_20240101_20240131.json, saved_at=2026-07-11T13:30:00
 ```
 
 The checkpoint also stores elapsed seconds and average rates:
@@ -263,7 +263,7 @@ The checkpoint also stores elapsed seconds and average rates:
 If a run fails after collecting some rows, a failure checkpoint message is also printed:
 
 ```text
-Failure checkpoint [국민내일배움카드훈련과정 20240101-20240131] rows=12000/37880, next_page=121, csv=dataset\work24\monthly\국민내일배움카드\국민내일배움카드훈련과정_202401.csv, checkpoint=logs\checkpoints\national-card_20240101_20240131.json, saved_at=2026-07-11T13:35:00, error=...
+Failure checkpoint [국민내일배움카드훈련과정 20240101-20240131] rows=12000/37880, next_page=121, csv=dataset\work24\monthly\국민내일배움카드\국민내일배움카드훈련과정_202401.csv, checkpoint=warehouse\checkpoints\national-card_20240101_20240131.json, saved_at=2026-07-11T13:35:00, error=...
 ```
 
 ## Notes

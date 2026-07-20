@@ -64,18 +64,21 @@ CSV는 임시 산출물이 아니라 Demo 버전의 Warehouse 저장소입니다
 
 ```text
 warehouse/
-  current/
-    training_course.csv
-  backup/
   logs/
     etl_log.csv
     api_collection_runs.csv
-  tmp/
+    data_snapshot_log.csv
+  checkpoints/
+dataset/
+  work24/
+    monthly/
+    yearly/
 ```
 
-Power BI는 `warehouse/current` 폴더만 읽습니다.
+Power BI는 기존 모델 호환을 위해 `dataset/work24/yearly` 폴더를 읽습니다.
 
-Validation 실패 시 `warehouse/current/training_course.csv`는 절대 덮어쓰지 않습니다.
+ETL은 `dataset/work24/monthly`에 월별 CSV를 수집한 뒤, 성공한 경우 `dataset/work24/yearly` 연도별 CSV를 다시 병합합니다.
+yearly CSV 교체 후에는 파일별 checksum을 비교해 `warehouse/logs/data_snapshot_log.csv`에 실제 변경 여부를 기록합니다.
 
 ---
 
@@ -84,7 +87,7 @@ Validation 실패 시 `warehouse/current/training_course.csv`는 절대 덮어�
 - 실행 주기: 매주 토요일 새벽
 - 기본 수집 범위: 현재월 기준 과거 6개월 ~ 미래 6개월
 - 수집 범위는 `--months-back`, `--months-forward` 인자로 변경 가능
-- 방식: 매주 전체 범위를 다시 수집한 뒤 current CSV를 교체
+- 방식: 매주 전체 범위를 다시 수집한 뒤 yearly CSV를 재생성
 - 증분 업데이트: Demo에서는 구현하지 않음
 
 ---
@@ -94,6 +97,7 @@ Validation 실패 시 `warehouse/current/training_course.csv`는 절대 덮어�
 | 파일 | 역할 |
 | --- | --- |
 | `script/csv_warehouse_etl.py` | CSV Warehouse Demo ETL 진입점 |
+| `script/csv_warehouse/` | 운영 ETL orchestration, logging, snapshot, cleanup 모듈 |
 | `script/run_csv_warehouse_etl.bat` | Windows Task Scheduler 실행용 배치 파일 |
 | `script/monthly_api_collection.py` | 월간 API 수집 CLI |
 | `script/work24_collector/` | API 호출, checkpoint, CSV 저장 모듈 |
@@ -120,9 +124,10 @@ script\run_csv_warehouse_etl.bat --months-back 3 --months-forward 9
 월별 API 수집 중 API 호출 오류가 발생하면 `--period-retries` 횟수만큼 해당 API/월을 처음부터 다시 수집합니다.
 API의 expected_count는 완료 판정의 절대 기준이 아니라 수집 건수 힌트로 사용합니다.
 
-이전 ETL이 실패했고 `warehouse/tmp/<run_id>`가 남아 있으면 다음 실행은 기본적으로 최신 실패 run을 이어받습니다.
+이전 ETL이 실패하면 다음 실행은 기본적으로 `warehouse/checkpoints`의 월별 checkpoint를 기준으로 이어받습니다.
 완료된 월은 checkpoint 기준으로 skip하고, 실패한 월부터 다시 수집합니다.
 처음부터 새로 실행하려면 `--fresh-run`을 추가합니다.
+ETL 종료 후 30일이 지난 checkpoint는 기본 cleanup 정책에 따라 삭제됩니다.
 
 ---
 

@@ -18,7 +18,7 @@ Windows Task Scheduler
 -> script/csv_warehouse_etl.py
 -> Extract
 -> Validate
--> Publish
+-> Yearly merge
 -> Logging
 -> CSV Warehouse
 -> On-premises Data Gateway
@@ -32,23 +32,25 @@ Windows Task Scheduler
 
 ```text
 warehouse/
-  current/
-    training_course.csv
-  backup/
-    training_course_<run_id>.csv
   logs/
     etl_log.csv
     api_collection_runs.csv
-  tmp/
-    <run_id>/
-      monthly/
-      checkpoints/
-      training_course.tmp.csv
+    data_snapshot_log.csv
+  checkpoints/
+
+dataset/
+  work24/
+    monthly/
+      <API명>/
+        <API명>_YYYYMM.csv
+    yearly/
+      <API명>/
+        <API명>_YYYY.csv
 ```
 
-Power BI는 `warehouse/current`만 읽는다.
+Power BI는 기존 모델 호환을 위해 `dataset/work24/yearly`를 읽는다.
 
-`warehouse/tmp`와 `warehouse/backup`은 Power BI 원본으로 사용하지 않는다.
+`dataset/work24/monthly`, `warehouse/checkpoints`, `warehouse/logs`는 Power BI 주 데이터 원본으로 사용하지 않는다.
 
 ---
 
@@ -61,7 +63,7 @@ Power BI는 `warehouse/current`만 읽는다.
 현재월 기준 과거 N개월 ~ 미래 N개월
 ```
 
-Demo에서는 매주 전체 수집 후 current CSV를 교체한다.
+Demo에서는 매주 전체 수집 후 yearly CSV를 재생성한다.
 
 증분 업데이트는 구현하지 않는다.
 
@@ -74,7 +76,7 @@ Demo에서는 매주 전체 수집 후 current CSV를 교체한다.
 ```text
 Extract
 -> Validate
--> Publish
+-> Yearly merge
 -> Logging
 ```
 
@@ -85,35 +87,39 @@ Extract
 ### Validate
 
 - API 호출 성공 여부
-- 예상 건수 == 실제 건수
-- 중복 검증
-- 필수 컬럼 NULL/빈값 검증
+- 월별 CSV 저장 성공 여부
+- checkpoint 기반 완료/재개 가능 여부
+- API expected_count 힌트와 actual_count 차이 warning 기록
 - CSV 저장 성공 여부
 
-### Publish
+### Yearly merge
 
-Validation 통과 시:
+월별 수집이 성공하면 Power BI가 읽는 연도별 CSV를 다시 병합한다.
 
 ```text
-기존 current CSV 백업
--> tmp CSV를 current CSV로 교체
+dataset/work24/monthly
+-> dataset/work24/yearly
 ```
 
-Validation 실패 시:
+수집 또는 병합 실패 시:
 
 ```text
-기존 current CSV 유지
+기존 yearly CSV 유지
 ```
 
 ### Logging
 
 모든 ETL 결과를 `warehouse/logs/etl_log.csv`에 기록한다.
 
+yearly CSV 파일별 row count, file size, checksum, 변경 여부는 `warehouse/logs/data_snapshot_log.csv`에 기록한다.
+
+ETL 종료 후 30일이 지난 checkpoint 파일은 cleanup 단계에서 삭제한다.
+
 ---
 
 ## Power BI 운영
 
-Power BI Desktop은 `warehouse/current/training_course.csv`를 데이터 원본으로 사용한다.
+Power BI Desktop은 `dataset/work24/yearly`를 데이터 원본으로 사용한다.
 
 Power BI Service는 On-premises Data Gateway를 통해 예약 새로고침만 수행한다.
 

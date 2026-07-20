@@ -52,9 +52,9 @@ Extract
 
 ### 6. CSV 교체
 
-Validation 실패 시 기존 `warehouse/current` CSV를 유지한다.
+Validation 실패 시 기존 `dataset/work24/yearly` CSV를 유지한다.
 
-절대 실패 산출물로 current CSV를 덮어쓰지 않는다.
+절대 실패 산출물로 yearly CSV를 덮어쓰지 않는다.
 
 ### 7. 로그
 
@@ -82,4 +82,3 @@ Validation 실패 시 기존 `warehouse/current` CSV를 유지한다.
 6. Windows Scheduler 실행 스크립트 작성
 7. Power BI Gateway 운영 문서 작성
 8. Power BI 운영 현황 Dashboard 설계
-

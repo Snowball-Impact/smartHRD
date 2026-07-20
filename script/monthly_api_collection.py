@@ -53,8 +53,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=Path("dataset/work24/monthly"),
         help="Output root directory. API-specific folders are created below this path.",
     )
-    parser.add_argument("--checkpoint-dir", type=Path, default=Path("logs/checkpoints"), help="Checkpoint directory.")
-    parser.add_argument("--log-path", type=Path, default=Path("logs/api_collection_runs.csv"), help="Run log CSV path.")
+    parser.add_argument(
+        "--checkpoint-dir",
+        type=Path,
+        default=Path("warehouse/checkpoints"),
+        help="Checkpoint directory.",
+    )
+    parser.add_argument(
+        "--log-path",
+        type=Path,
+        default=Path("warehouse/logs/api_collection_runs.csv"),
+        help="Run log CSV path.",
+    )
     parser.add_argument("--env-file", type=Path, default=Path(".env"), help="Environment file containing API keys.")
     parser.add_argument(
         "--page-size",

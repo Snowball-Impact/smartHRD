@@ -39,7 +39,7 @@ docs/CURRENT_SYSTEM_ANALYSIS.md
 Purpose:
 
 - Record the current Python collection script behavior.
-- Record current CSV/Power BI migration observations.
+- Record CSV/Power BI migration observations.
 - Avoid repeating the same analysis in later contexts.
 
 ### Monthly API Collection Refactor
@@ -65,8 +65,8 @@ Main behavior:
 - Supports `.env` based API keys.
 - Splits arbitrary date ranges into monthly periods.
 - Writes CSV output under `dataset/work24/monthly` by default.
-- Writes checkpoints under `logs/checkpoints`.
-- Writes run logs under `logs/api_collection_runs.csv`.
+- Writes checkpoints under `warehouse/checkpoints`.
+- Writes run logs under `warehouse/logs/api_collection_runs.csv`.
 - Supports resume from checkpoint and existing CSV row count.
 - Uses chunk append instead of rewriting the whole CSV.
 - Logs intermediate save path, row count, timestamp, and speed.
