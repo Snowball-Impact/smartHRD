@@ -152,9 +152,18 @@ def validate_monthly_files(
         data = json.loads(checkpoint.read_text(encoding="utf-8"))
         expected_count = data.get("expected_count")
         collected_count = data.get("collected_count")
+        completed = bool(data.get("completed"))
 
         if expected_count is None:
             warnings.append(f"No expected_count in checkpoint {checkpoint}; rows={rows}")
+            continue
+
+        if completed and rows == collected_count:
+            if expected_count != collected_count:
+                warnings.append(
+                    f"Count hint mismatch for completed monthly file: {path} "
+                    f"rows={rows}, collected={collected_count}, expected_hint={expected_count}"
+                )
             continue
 
         if rows != expected_count or collected_count != expected_count:

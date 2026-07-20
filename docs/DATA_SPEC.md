@@ -79,6 +79,25 @@ ETL 로그:
 warehouse/logs/etl_log.csv
 ```
 
+주요 ETL 로그 컬럼:
+
+```text
+run_id
+started_at
+finished_at
+dataset
+status
+expected_count
+actual_count
+window_start
+window_end
+months_back
+months_forward
+is_resume
+duration_seconds
+message
+```
+
 ---
 
 ## 주요 컬럼
@@ -121,7 +140,6 @@ Demo ETL은 운영 추적을 위해 다음 메타 컬럼을 앞에 추가한다.
 ```text
 trprId
 trprDegr
-trainstCstId
 traStartDate
 traEndDate
 ```
@@ -139,6 +157,6 @@ traEndDate
 
 TODO:
 
-- 전체 API/기간에 대한 필수 컬럼 NULL 허용 정책 확정
+- 전체 API/기간에 대한 추가 nullable 컬럼 정책 확정
 - Power BI 기존 모델과 추가 메타 컬럼 영향 검증
 - 운영 현황 Dashboard용 로그 컬럼 확정

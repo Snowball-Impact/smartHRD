@@ -15,6 +15,7 @@ dataset/
 logs/
 analysis/
 tmp/
+warehouse/
 
 # Local databases and exports
 *.sqlite

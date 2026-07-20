@@ -46,6 +46,7 @@ def collect_period(
     collected_count = 0
     expected_count = 0
     next_page = 1
+    last_page_row_count = 0
     csv_has_header = False
     started_perf = perf_counter()
     last_save_perf = started_perf
@@ -64,6 +65,24 @@ def collect_period(
                 last_saved_count = collected_count
                 last_saved_page = max(next_page - 1, 0)
                 print(f"Resume {spec.display_name} {start}-{end}: page {next_page}, rows {collected_count}")
+                total_pages = math.ceil(expected_count / settings.page_size) if expected_count else 0
+                legacy_complete = (
+                    expected_count
+                    and collected_count == expected_count
+                    and checkpoint_count == expected_count
+                    and total_pages
+                    and next_page > total_pages
+                )
+                if (checkpoint.get("completed") and collected_count == checkpoint_count) or legacy_complete:
+                    print(
+                        "Already complete "
+                        f"[{spec.display_name} {start}-{end}] "
+                        f"rows={collected_count}, expected_hint={expected_count}, skip"
+                    )
+                    if legacy_complete and not checkpoint.get("completed"):
+                        save_completed_checkpoint(cp_path, out_path, spec, start, end, expected_count, next_page, collected_count)
+                    log_success(settings, log_row, expected_count, collected_count)
+                    return log_row
                 if next_page > 1 and collected_count != checkpoint_count:
                     print(
                         "Checkpoint and CSV row count do not match. "
@@ -127,23 +146,18 @@ def collect_period(
                 current_page=1,
                 current_perf=current_perf,
             )
+            last_page_row_count = len(pending_rows)
             pending_rows = []
             csv_has_header = True
 
-        total_pages = math.ceil(expected_count / settings.page_size) if expected_count else 0
-        if settings.resume and expected_count == collected_count and total_pages and next_page > total_pages:
-            print(
-                "Already complete "
-                f"[{spec.display_name} {start}-{end}] "
-                f"rows={collected_count}/{expected_count}, next_page={next_page}, skip"
-            )
-            log_success(settings, log_row, expected_count, collected_count)
-            return log_row
+        total_pages_hint = math.ceil(expected_count / settings.page_size) if expected_count else 0
+        print(f"Collect {spec.display_name} {start}-{end}: expected_hint {expected_count}, pages_hint {total_pages_hint}")
 
-        print(f"Collect {spec.display_name} {start}-{end}: expected {expected_count}, pages {total_pages}")
-
-        while next_page <= total_pages:
-            block_end_page = next_save_boundary(next_page, total_pages, settings.save_every_pages)
+        while last_page_row_count >= settings.page_size:
+            if total_pages_hint and next_page <= total_pages_hint:
+                block_end_page = next_save_boundary(next_page, total_pages_hint, settings.save_every_pages)
+            else:
+                block_end_page = next_page
             page_results = collect_page_block(
                 settings,
                 session,
@@ -158,8 +172,9 @@ def collect_period(
             for page_num, page_rows in page_results:
                 pending_rows.extend(page_rows)
                 collected_count += len(page_rows)
-                if should_print_progress(settings, page_num, total_pages):
-                    print(f"Page {page_num}/{total_pages}: total rows {collected_count}")
+                last_page_row_count = len(page_rows)
+                if should_print_progress(settings, page_num, total_pages_hint):
+                    print(f"Page {page_num}/{total_pages_hint or '?'}: total rows {collected_count}")
 
             current_perf = perf_counter()
             last_save_perf, last_saved_count, last_saved_page = save_progress(
@@ -184,10 +199,18 @@ def collect_period(
             pending_rows = []
             csv_has_header = True
             next_page = block_end_page + 1
+            if total_pages_hint and block_end_page >= total_pages_hint and collected_count == expected_count:
+                break
 
         if expected_count != collected_count:
-            raise CollectionError(f"Collected {collected_count} rows, expected {expected_count}.")
+            print(
+                "Count warning "
+                f"[{spec.display_name} {start}-{end}] "
+                f"collected={collected_count}, expected_hint={expected_count}. "
+                "Using collected rows because API page traversal reached the final short page."
+            )
 
+        save_completed_checkpoint(cp_path, out_path, spec, start, end, expected_count, next_page, collected_count)
         log_success(settings, log_row, expected_count, collected_count)
         print(f"Saved {collected_count} rows: {out_path}")
         return log_row
@@ -422,6 +445,34 @@ def save_failure_checkpoint(
         f"[{spec.display_name} {start}-{end}] "
         f"rows={collected_count}/{expected_count}, next_page={next_page}, "
         f"csv={out_path}, checkpoint={cp_path}, saved_at={updated_at}, error={exc}"
+    )
+
+
+def save_completed_checkpoint(
+    cp_path: Path,
+    out_path: Path,
+    spec: ApiSpec,
+    start: str,
+    end: str,
+    expected_count: int,
+    next_page: int,
+    collected_count: int,
+) -> None:
+    updated_at = datetime.now().isoformat(timespec="seconds")
+    save_checkpoint(
+        cp_path,
+        {
+            "api": spec.code,
+            "period_start": start,
+            "period_end": end,
+            "expected_count": expected_count,
+            "next_page": next_page,
+            "collected_count": collected_count,
+            "output_file": str(out_path),
+            "completed": True,
+            "completion_rule": "final_short_page",
+            "updated_at": updated_at,
+        },
     )
 
 

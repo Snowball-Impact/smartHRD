@@ -13,7 +13,7 @@ Python ETL은 고용24 API 데이터를 수집하고, 검증이 통과한 경우
 수동 실행:
 
 ```powershell
-python script\csv_warehouse_etl.py --api all --months-back 6 --months-forward 6 --workers 2 --progress-every-pages 10
+python script\csv_warehouse_etl.py --api all --months-back 6 --months-forward 6 --period-retries 1 --workers 2 --progress-every-pages 10
 ```
 
 Windows Task Scheduler 실행 파일:
@@ -56,6 +56,28 @@ Windows Task Scheduler에서 배치 파일을 쓸 때도 ETL 인자를 그대로
 script\run_csv_warehouse_etl.bat --months-back 3 --months-forward 9
 ```
 
+월별 API 수집 중 API 호출 오류가 발생하면 `--period-retries` 횟수만큼 해당 API/월을 처음부터 다시 수집한다.
+
+```powershell
+python script\csv_warehouse_etl.py --api all --period-retries 2
+```
+
+ETL 전체가 실패한 뒤 같은 명령을 다시 실행하면 기본적으로 `warehouse/logs/etl_log.csv`의 최신 FAIL run을 찾고, 해당 `warehouse/tmp/<run_id>`를 이어받는다.
+
+이때 이미 완료된 월은 checkpoint 기준으로 skip하고, incomplete 월은 처음부터 다시 수집한다.
+
+처음부터 새 run을 만들려면 `--fresh-run`을 사용한다.
+
+```powershell
+python script\csv_warehouse_etl.py --api all --fresh-run
+```
+
+특정 run_id를 명시적으로 이어받을 수도 있다.
+
+```powershell
+python script\csv_warehouse_etl.py --api all --resume-run-id 20260720091802
+```
+
 ---
 
 ## Publish 정책
@@ -89,18 +111,23 @@ warehouse/current/training_course.csv 유지
 현재 Demo Validator:
 
 - API 수집 중 예외 발생 여부
-- expected_count와 actual_count 일치 여부
+- API expected_count 힌트와 actual_count 차이 여부
+- 월별 수집 실패 시 설정된 횟수만큼 재시도
+- ETL 재실행 시 최신 실패 run의 checkpoint 기반 재개
 - 필수 컬럼 존재 여부
 - 필수 컬럼 NULL/빈값 여부
 - row identity 중복 여부
 - tmp CSV 생성 여부
+
+API의 `scn_cnt`는 수집 건수 힌트로 사용한다.
+최종 완료 판정은 페이지를 순회하다가 마지막 페이지가 `page_size`보다 짧아지는 시점으로 판단한다.
+`scn_cnt`와 실제 수집 건수가 다르면 FAIL이 아니라 ETL 로그의 warning message로 남긴다.
 
 필수 컬럼:
 
 ```text
 trprId
 trprDegr
-trainstCstId
 traStartDate
 traEndDate
 ```
@@ -115,6 +142,9 @@ trainstCstId
 traStartDate
 traEndDate
 ```
+
+`trainstCstId`는 일부 API/기간에서 비어 있을 수 있으므로 필수 NULL 실패 조건에서는 제외한다.
+다만 row identity 후보에는 남기고, 해당 값이 비어 있는 row는 중복 검증에서 제외한 뒤 warning message로 남긴다.
 
 TODO:
 
@@ -141,6 +171,11 @@ dataset
 status
 expected_count
 actual_count
+window_start
+window_end
+months_back
+months_forward
+is_resume
 duration_seconds
 message
 ```

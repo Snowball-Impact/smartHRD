@@ -12,7 +12,7 @@ import csv
 import os
 import shutil
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from time import perf_counter
@@ -45,6 +45,11 @@ ETL_LOG_FIELDS = [
     "status",
     "expected_count",
     "actual_count",
+    "window_start",
+    "window_end",
+    "months_back",
+    "months_forward",
+    "is_resume",
     "duration_seconds",
     "message",
 ]
@@ -52,7 +57,6 @@ ETL_LOG_FIELDS = [
 REQUIRED_COLUMNS = [
     "trprId",
     "trprDegr",
-    "trainstCstId",
     "traStartDate",
     "traEndDate",
 ]
@@ -85,6 +89,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--months-forward", type=int, default=6, help="Months after the current month to collect.")
     parser.add_argument("--warehouse-dir", type=Path, default=Path("warehouse"))
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
+    parser.add_argument("--resume-run-id", help="Resume a specific failed run_id under warehouse/tmp.")
+    parser.add_argument(
+        "--fresh-run",
+        action="store_true",
+        help="Start a new run even when a resumable failed run exists.",
+    )
     parser.add_argument("--page-size", type=int, default=DEFAULT_PAGE_SIZE)
     parser.add_argument("--timeout-seconds", type=int, default=DEFAULT_TIMEOUT_SECONDS)
     parser.add_argument("--max-retries", type=int, default=DEFAULT_MAX_RETRIES)
@@ -92,6 +102,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--save-every-pages", type=int, default=100)
     parser.add_argument("--progress-every-pages", type=int, default=10)
     parser.add_argument("--workers", type=int, default=2)
+    parser.add_argument(
+        "--period-retries",
+        type=int,
+        default=1,
+        help="Retry a failed API/month collection from page 1 before failing the ETL.",
+    )
     parser.add_argument("--encoding", default="utf-8-sig")
     parser.add_argument("--keep-temp", action="store_true", help="Keep the run temp directory after success.")
     return parser.parse_args(argv)
@@ -110,6 +126,8 @@ def validate_args(args: argparse.Namespace) -> str | None:
         return "--progress-every-pages must be greater than 0."
     if args.workers <= 0 or args.workers > MAX_WORKERS:
         return f"--workers must be between 1 and {MAX_WORKERS}."
+    if args.period_retries < 0:
+        return "--period-retries must be 0 or greater."
     return None
 
 
@@ -136,7 +154,7 @@ def refresh_window(as_of: datetime, months_back: int, months_forward: int) -> tu
     return start, end
 
 
-def collector_settings(args: argparse.Namespace, run_dir: Path) -> CollectorSettings:
+def collector_settings(args: argparse.Namespace, run_dir: Path, resume: bool) -> CollectorSettings:
     return CollectorSettings(
         output_dir=run_dir / "monthly",
         checkpoint_dir=run_dir / "checkpoints",
@@ -149,7 +167,7 @@ def collector_settings(args: argparse.Namespace, run_dir: Path) -> CollectorSett
         progress_every_pages=args.progress_every_pages,
         workers=args.workers,
         encoding=args.encoding,
-        resume=False,
+        resume=resume,
         simple_filename=True,
     )
 
@@ -189,6 +207,7 @@ def validate_tmp_csv(path: Path, expected_count: int, encoding: str) -> Validati
     actual_count = 0
     duplicate_count = 0
     null_counts = {column: 0 for column in REQUIRED_COLUMNS}
+    dedup_key_null_count = 0
     missing_required: list[str] = []
     seen_keys: set[tuple[str, ...]] = set()
 
@@ -205,6 +224,9 @@ def validate_tmp_csv(path: Path, expected_count: int, encoding: str) -> Validati
 
             for key in chunk[DEDUP_KEY].fillna("").itertuples(index=False, name=None):
                 key_tuple = tuple(str(value).strip() for value in key)
+                if any(value == "" for value in key_tuple):
+                    dedup_key_null_count += 1
+                    continue
                 if key_tuple in seen_keys:
                     duplicate_count += 1
                 else:
@@ -212,8 +234,9 @@ def validate_tmp_csv(path: Path, expected_count: int, encoding: str) -> Validati
     except Exception as exc:
         return ValidationResult(False, actual_count, f"CSV 읽기/검증 실패: {exc}")
 
+    count_message = ""
     if expected_count != actual_count:
-        return ValidationResult(False, actual_count, f"예상 건수({expected_count})와 실제 건수({actual_count})가 다릅니다.")
+        count_message = f"expected_hint({expected_count})와 actual_count({actual_count})가 다릅니다."
     if missing_required:
         return ValidationResult(False, actual_count, f"필수 컬럼 누락: {', '.join(missing_required)}")
 
@@ -223,8 +246,12 @@ def validate_tmp_csv(path: Path, expected_count: int, encoding: str) -> Validati
         return ValidationResult(False, actual_count, f"필수 컬럼 NULL/빈값 발견: {detail}")
     if duplicate_count:
         return ValidationResult(False, actual_count, f"중복 row identity 발견: {duplicate_count}건")
+    if dedup_key_null_count:
+        if count_message:
+            count_message = f"{count_message}; "
+        count_message += f"row identity 일부 컬럼 NULL/빈값 row={dedup_key_null_count}건은 중복 검증에서 제외했습니다."
 
-    return ValidationResult(True, actual_count, "PASS")
+    return ValidationResult(True, actual_count, count_message or "PASS")
 
 
 def publish_current(tmp_path: Path, current_path: Path, backup_dir: Path, run_id: str) -> None:
@@ -239,11 +266,107 @@ def publish_current(tmp_path: Path, current_path: Path, backup_dir: Path, run_id
 def write_etl_log(log_path: Path, row: dict[str, Any]) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     exists = log_path.exists()
+    if exists:
+        ensure_log_header(log_path)
     with log_path.open("a", newline="", encoding="utf-8-sig") as handle:
         writer = csv.DictWriter(handle, fieldnames=ETL_LOG_FIELDS)
         if not exists:
             writer.writeheader()
         writer.writerow({field: row.get(field, "") for field in ETL_LOG_FIELDS})
+
+
+def ensure_log_header(log_path: Path) -> None:
+    with log_path.open("r", newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle)
+        existing_fields = reader.fieldnames or []
+        if existing_fields == ETL_LOG_FIELDS:
+            return
+        rows = list(reader)
+
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("w", newline="", encoding="utf-8-sig") as handle:
+        writer = csv.DictWriter(handle, fieldnames=ETL_LOG_FIELDS)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: row.get(field, "") for field in ETL_LOG_FIELDS})
+
+
+def latest_failed_run_id(log_path: Path, tmp_root: Path) -> str | None:
+    if not log_path.exists():
+        return None
+
+    best_run_id: str | None = None
+    best_progress = -1
+    with log_path.open("r", newline="", encoding="utf-8-sig") as handle:
+        for row in csv.DictReader(handle):
+            run_id = (row.get("run_id") or "").strip()
+            status = (row.get("status") or "").strip().upper()
+            if status == "PASS":
+                best_run_id = None
+                best_progress = -1
+            elif status == "FAIL" and run_id and (tmp_root / run_id).exists():
+                progress = resumable_progress_count(tmp_root / run_id)
+                if progress > best_progress or (progress == best_progress and (best_run_id is None or run_id > best_run_id)):
+                    best_run_id = run_id
+                    best_progress = progress
+    return best_run_id
+
+
+def resumable_progress_count(run_dir: Path) -> int:
+    checkpoint_dir = run_dir / "checkpoints"
+    if not checkpoint_dir.exists():
+        return 0
+    return sum(1 for path in checkpoint_dir.glob("*.json") if path.is_file())
+
+
+def resolve_run_id(args: argparse.Namespace, etl_log_path: Path) -> tuple[str, bool]:
+    tmp_root = args.warehouse_dir / "tmp"
+    if args.resume_run_id:
+        run_dir = tmp_root / args.resume_run_id
+        if not run_dir.exists():
+            raise RuntimeError(f"Cannot resume missing run directory: {run_dir}")
+        return args.resume_run_id, True
+
+    if not args.fresh_run:
+        resumable_run_id = latest_failed_run_id(etl_log_path, tmp_root)
+        if resumable_run_id:
+            return resumable_run_id, True
+
+    return datetime.now().strftime("%Y%m%d%H%M%S"), False
+
+
+def collect_period_with_retries(
+    settings: CollectorSettings,
+    session: Any,
+    spec: Any,
+    api_key: str,
+    period_start: str,
+    period_end: str,
+    period_retries: int,
+) -> dict[str, Any]:
+    attempts = period_retries + 1
+    last_error: Exception | None = None
+
+    for attempt in range(1, attempts + 1):
+        try:
+            attempt_settings = settings if attempt == 1 else replace(settings, resume=False)
+            if attempt > 1:
+                print(
+                    f"Retry period [{spec.display_name} {period_start}-{period_end}] "
+                    f"attempt={attempt}/{attempts}"
+                )
+            return collect_period(attempt_settings, session, spec, api_key, period_start, period_end)
+        except Exception as exc:
+            last_error = exc
+            if attempt >= attempts:
+                break
+            print(
+                f"Period collection failed. Will retry from page 1 "
+                f"[{spec.display_name} {period_start}-{period_end}] error={exc}"
+            )
+
+    assert last_error is not None
+    raise last_error
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -253,30 +376,39 @@ def main(argv: list[str] | None = None) -> int:
         print(error, file=sys.stderr)
         return 2
 
-    run_id = datetime.now().strftime("%Y%m%d%H%M%S")
     started_at = datetime.now()
     started_perf = perf_counter()
+    etl_log_path = args.warehouse_dir / "logs" / "etl_log.csv"
+    try:
+        run_id, is_resume_run = resolve_run_id(args, etl_log_path)
+    except Exception as exc:
+        print(f"ETL failed before run start. {exc}", file=sys.stderr)
+        return 1
     run_dir = args.warehouse_dir / "tmp" / run_id
     tmp_csv = run_dir / "training_course.tmp.csv"
     current_csv = args.warehouse_dir / "current" / "training_course.csv"
     backup_dir = args.warehouse_dir / "backup"
-    etl_log_path = args.warehouse_dir / "logs" / "etl_log.csv"
     expected_count = 0
     actual_count = 0
     status = "FAIL"
     message = ""
+    window_start = ""
+    window_end = ""
 
     try:
         load_env_file(args.env_file)
         as_of = args.as_of or datetime.now()
         start_dt, end_dt = refresh_window(as_of, args.months_back, args.months_forward)
+        window_start = start_dt.strftime("%Y%m%d")
+        window_end = end_dt.strftime("%Y%m%d")
         periods = month_ranges(start_dt, end_dt)
         api_codes = selected_api_codes(args.api)
-        settings = collector_settings(args, run_dir)
+        settings = collector_settings(args, run_dir, resume=is_resume_run)
 
         print(
             f"Run CSV Warehouse ETL run_id={run_id}, "
-            f"window={start_dt:%Y%m%d}-{end_dt:%Y%m%d}, dataset=training_course"
+            f"window={start_dt:%Y%m%d}-{end_dt:%Y%m%d}, dataset=training_course, "
+            f"resume={is_resume_run}"
         )
 
         with create_session() as session:
@@ -286,7 +418,15 @@ def main(argv: list[str] | None = None) -> int:
                 if not api_key:
                     raise RuntimeError(f"Missing API key. Set {spec.key_env} in environment or {args.env_file}.")
                 for period_start, period_end in periods:
-                    result = collect_period(settings, session, spec, api_key, period_start, period_end)
+                    result = collect_period_with_retries(
+                        settings,
+                        session,
+                        spec,
+                        api_key,
+                        period_start,
+                        period_end,
+                        args.period_retries,
+                    )
                     expected_count += int(result.get("expected_count", 0))
 
         actual_count = merge_monthly_outputs(run_dir, api_codes, tmp_csv, args.encoding)
@@ -297,7 +437,10 @@ def main(argv: list[str] | None = None) -> int:
         if validation.passed:
             publish_current(tmp_csv, current_csv, backup_dir, run_id)
             status = "PASS"
-            message = f"PASS: published {current_csv}"
+            if validation.message == "PASS":
+                message = f"PASS: published {current_csv}"
+            else:
+                message = f"PASS with warning: {validation.message}; published {current_csv}"
             print(message)
         else:
             print(f"Validation failed. Keep existing current CSV. {message}", file=sys.stderr)
@@ -321,6 +464,11 @@ def main(argv: list[str] | None = None) -> int:
                 "status": status,
                 "expected_count": expected_count,
                 "actual_count": actual_count,
+                "window_start": window_start,
+                "window_end": window_end,
+                "months_back": args.months_back,
+                "months_forward": args.months_forward,
+                "is_resume": is_resume_run,
                 "duration_seconds": duration_seconds,
                 "message": message,
             },

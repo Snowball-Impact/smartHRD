@@ -102,7 +102,7 @@ Validation 실패 시 `warehouse/current/training_course.csv`는 절대 덮어�
 Demo ETL 실행:
 
 ```powershell
-python script\csv_warehouse_etl.py --api all --months-back 6 --months-forward 6 --workers 2 --progress-every-pages 10
+python script\csv_warehouse_etl.py --api all --months-back 6 --months-forward 6 --period-retries 1 --workers 2 --progress-every-pages 10
 ```
 
 Windows Scheduler에는 다음 파일을 등록합니다.
@@ -116,6 +116,13 @@ Scheduler에서 기간을 바꾸려면 배치 파일 인자에 ETL 옵션을 추
 ```text
 script\run_csv_warehouse_etl.bat --months-back 3 --months-forward 9
 ```
+
+월별 API 수집 중 API 호출 오류가 발생하면 `--period-retries` 횟수만큼 해당 API/월을 처음부터 다시 수집합니다.
+API의 expected_count는 완료 판정의 절대 기준이 아니라 수집 건수 힌트로 사용합니다.
+
+이전 ETL이 실패했고 `warehouse/tmp/<run_id>`가 남아 있으면 다음 실행은 기본적으로 최신 실패 run을 이어받습니다.
+완료된 월은 checkpoint 기준으로 skip하고, 실패한 월부터 다시 수집합니다.
+처음부터 새로 실행하려면 `--fresh-run`을 추가합니다.
 
 ---
 
