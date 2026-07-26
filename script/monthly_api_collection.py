@@ -128,6 +128,7 @@ def settings_from_args(args: argparse.Namespace) -> CollectorSettings:
         run_mode="resume" if args.resume else "scheduled",
         collection_refresh_days=7,
         collection_date=datetime.now().strftime("%Y%m%d"),
+        etl_run_id="",
     )
 
 

@@ -42,7 +42,7 @@ def merge_yearly_snapshots(
             else:
                 snapshot_message = "UNCHANGED"
             snapshot = DataSnapshot(
-                api=spec.display_name,
+                api=snapshot_api_label(spec),
                 year=year,
                 file_path=output_path,
                 row_count=row_count,
@@ -96,7 +96,7 @@ def publish_integrated_snapshots(
         else:
             snapshot_message = "UNCHANGED"
         snapshot = DataSnapshot(
-            api=spec.display_name,
+            api=snapshot_api_label(spec),
             year="ALL",
             file_path=output_path,
             row_count=row_count,
@@ -140,6 +140,14 @@ def integrated_output_path(integrated_root: Path, spec: ApiSpec) -> Path:
 
 
 def integrated_file_stem(spec: ApiSpec) -> str:
+    if spec.code == "national-card":
+        return "국민내일배움카드"
+    if spec.code == "consortium":
+        return "국가인적자원개발"
+    return spec.display_name
+
+
+def snapshot_api_label(spec: ApiSpec) -> str:
     if spec.code == "national-card":
         return "국민내일배움카드"
     if spec.code == "consortium":

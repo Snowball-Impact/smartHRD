@@ -66,6 +66,7 @@ def collector_settings(args: Any, resume: bool) -> CollectorSettings:
         run_mode=args.effective_run_mode,
         collection_refresh_days=args.collection_refresh_days,
         collection_date=args.collection_date,
+        etl_run_id=args.etl_run_id,
     )
 
 
@@ -109,12 +110,13 @@ def run_csv_warehouse_etl(args: Any) -> int:
     etl_log_path = warehouse_log_path(args.warehouse_dir, "etl_log.csv")
     data_snapshot_log_path = warehouse_log_path(args.warehouse_dir, "data_snapshot_log.csv")
     run_id = datetime.now().strftime("%Y%m%d%H%M%S")
+    args.etl_run_id = run_id
     effective_run_mode = "scheduled" if args.fresh_run else args.run_mode
     args.effective_run_mode = effective_run_mode
     is_resume_run = effective_run_mode in {"auto", "resume"}
     expected_count = 0
     actual_count = 0
-    status = "FAIL"
+    status = False
     message = ""
     window_start = ""
     window_end = ""
@@ -189,12 +191,12 @@ def run_csv_warehouse_etl(args: Any) -> int:
                 args.integrated_dir,
                 args.encoding,
             )
-            write_data_snapshot_log(data_snapshot_log_path, run_id, datetime.now(), snapshots)
+            write_data_snapshot_log(data_snapshot_log_path, run_id, datetime.now(), yearly_snapshots + snapshots)
         else:
             print("Publish skipped: all monthly periods were skipped and --force-publish was not set.")
 
         changed_count = sum(1 for snapshot in snapshots if snapshot.is_changed)
-        status = "PASS"
+        status = True
         if expected_count != actual_count:
             message = (
                 f"PASS with warning: expected_hint({expected_count})와 "

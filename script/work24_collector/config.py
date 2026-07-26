@@ -42,6 +42,7 @@ class CollectorSettings:
     run_mode: str
     collection_refresh_days: int
     collection_date: str
+    etl_run_id: str
 
 
 API_SPECS = {

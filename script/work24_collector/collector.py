@@ -30,11 +30,12 @@ def collect_period(
     start: str,
     end: str,
 ) -> dict[str, Any]:
-    run_id = f"{spec.code}_{start}_{end}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    collection_run_id = f"{spec.code}_{start}_{end}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
     cp_path = checkpoint_path(settings.checkpoint_dir, spec, start, end)
     out_path = output_file_path(settings.output_dir, spec, start, end, settings.simple_filename)
     log_row: dict[str, Any] = {
-        "run_id": run_id,
+        "run_id": settings.etl_run_id or collection_run_id,
+        "collection_run_id": collection_run_id,
         "api": spec.code,
         "period_start": start,
         "period_end": end,

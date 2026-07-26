@@ -12,6 +12,7 @@ from .config import ApiSpec
 
 RUN_LOG_FIELDS = [
     "run_id",
+    "collection_run_id",
     "api",
     "period_start",
     "period_end",
