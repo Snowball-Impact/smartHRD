@@ -46,11 +46,14 @@ dataset/
     yearly/
       <API명>/
         <API명>_YYYY.csv
+    integrated/
+      <API명>/
+        <API명>.csv
 ```
 
-Power BI는 기존 모델 호환을 위해 `dataset/work24/yearly`를 읽는다.
+Power BI는 소스 관리를 단순화하기 위해 `dataset/work24/integrated`를 읽는다.
 
-`dataset/work24/monthly`, `warehouse/checkpoints`, `warehouse/logs`는 Power BI 주 데이터 원본으로 사용하지 않는다.
+`dataset/work24/monthly`, `dataset/work24/yearly`, `warehouse/checkpoints`, `warehouse/logs`는 Power BI 주 데이터 원본으로 사용하지 않는다.
 
 ---
 
@@ -63,7 +66,7 @@ Power BI는 기존 모델 호환을 위해 `dataset/work24/yearly`를 읽는다.
 현재월 기준 과거 N개월 ~ 미래 N개월
 ```
 
-Demo에서는 매주 전체 수집 후 yearly CSV를 재생성한다.
+Demo에서는 매주 전체 수집 후 yearly CSV와 integrated CSV를 재생성한다.
 
 증분 업데이트는 구현하지 않는다.
 
@@ -77,6 +80,7 @@ Demo에서는 매주 전체 수집 후 yearly CSV를 재생성한다.
 Extract
 -> Validate
 -> Yearly merge
+-> Integrated merge
 -> Logging
 ```
 
@@ -94,24 +98,38 @@ Extract
 
 ### Yearly merge
 
-월별 수집이 성공하면 Power BI가 읽는 연도별 CSV를 다시 병합한다.
+월별 수집이 성공하면 연도별 CSV를 다시 병합한다.
 
 ```text
 dataset/work24/monthly
 -> dataset/work24/yearly
 ```
 
+### Integrated merge
+
+연도별 CSV가 생성되면 Power BI가 읽는 API별 통합 CSV를 다시 병합한다.
+
+```text
+dataset/work24/yearly
+-> dataset/work24/integrated
+```
+
+`integrated`는 API별 yearly CSV를 하나로 합친 파일이며, 각 API 원본 컬럼을 그대로 보존한다.
+
+월별 수집이 모두 checkpoint 기준으로 skip된 경우에는 yearly/integrated 병합도 skip한다.
+병합을 강제로 실행하려면 `--force-publish`를 사용한다.
+
 수집 또는 병합 실패 시:
 
 ```text
-기존 yearly CSV 유지
+기존 yearly/integrated CSV 유지
 ```
 
 ### Logging
 
 모든 ETL 결과를 `warehouse/logs/etl_log.csv`에 기록한다.
 
-yearly CSV 파일별 row count, file size, checksum, 변경 여부는 `warehouse/logs/data_snapshot_log.csv`에 기록한다.
+integrated CSV 파일별 row count, file size, checksum, 변경 여부는 `warehouse/logs/data_snapshot_log.csv`에 기록한다.
 
 ETL 종료 후 30일이 지난 checkpoint 파일은 cleanup 단계에서 삭제한다.
 
@@ -119,7 +137,7 @@ ETL 종료 후 30일이 지난 checkpoint 파일은 cleanup 단계에서 삭제�
 
 ## Power BI 운영
 
-Power BI Desktop은 `dataset/work24/yearly`를 데이터 원본으로 사용한다.
+Power BI Desktop은 `dataset/work24/integrated`를 데이터 원본으로 사용한다.
 
 Power BI Service는 On-premises Data Gateway를 통해 예약 새로고침만 수행한다.
 

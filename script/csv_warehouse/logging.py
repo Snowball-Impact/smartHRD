@@ -14,15 +14,11 @@ ETL_LOG_FIELDS = [
     "run_id",
     "started_at",
     "finished_at",
-    "dataset",
     "status",
     "expected_count",
     "actual_count",
     "window_start",
     "window_end",
-    "months_back",
-    "months_forward",
-    "is_resume",
     "duration_seconds",
     "message",
 ]
@@ -97,4 +93,3 @@ def ensure_log_header(log_path: Path, fields: list[str]) -> None:
         writer.writeheader()
         for row in rows:
             writer.writerow({field: row.get(field, "") for field in fields})
-

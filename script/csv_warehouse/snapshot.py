@@ -5,12 +5,13 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Union
 
 
 @dataclass(frozen=True)
 class DataSnapshot:
     api: str
-    year: int
+    year: Union[int, str]
     file_path: Path
     row_count: int
     file_size_bytes: int
@@ -26,4 +27,3 @@ def file_checksum(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
-

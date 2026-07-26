@@ -12,7 +12,7 @@ from typing import Any
 from csv_warehouse.cleanup import cleanup_old_checkpoints
 from csv_warehouse.logging import write_data_snapshot_log, write_etl_log
 from csv_warehouse.paths import warehouse_log_path
-from csv_warehouse.publisher import merge_yearly_snapshots
+from csv_warehouse.publisher import merge_yearly_snapshots, publish_integrated_snapshots
 from work24_collector.client import create_session
 from work24_collector.collector import collect_period
 from work24_collector.config import (
@@ -63,6 +63,9 @@ def collector_settings(args: Any, resume: bool) -> CollectorSettings:
         encoding=args.encoding,
         resume=resume,
         simple_filename=True,
+        run_mode=args.effective_run_mode,
+        collection_refresh_days=args.collection_refresh_days,
+        collection_date=args.collection_date,
     )
 
 
@@ -106,7 +109,9 @@ def run_csv_warehouse_etl(args: Any) -> int:
     etl_log_path = warehouse_log_path(args.warehouse_dir, "etl_log.csv")
     data_snapshot_log_path = warehouse_log_path(args.warehouse_dir, "data_snapshot_log.csv")
     run_id = datetime.now().strftime("%Y%m%d%H%M%S")
-    is_resume_run = not args.fresh_run
+    effective_run_mode = "scheduled" if args.fresh_run else args.run_mode
+    args.effective_run_mode = effective_run_mode
+    is_resume_run = effective_run_mode in {"auto", "resume"}
     expected_count = 0
     actual_count = 0
     status = "FAIL"
@@ -118,6 +123,7 @@ def run_csv_warehouse_etl(args: Any) -> int:
     try:
         load_env_file(args.env_file)
         as_of = args.as_of or datetime.now()
+        args.collection_date = as_of.strftime("%Y%m%d")
         start_dt, end_dt = refresh_window(as_of, args.months_back, args.months_forward)
         window_start = start_dt.strftime("%Y%m%d")
         window_end = end_dt.strftime("%Y%m%d")
@@ -125,11 +131,14 @@ def run_csv_warehouse_etl(args: Any) -> int:
         api_codes = selected_api_codes(args.api)
         years = list(range(start_dt.year, end_dt.year + 1))
         settings = collector_settings(args, resume=is_resume_run)
+        collected_years_by_api: dict[str, set[int]] = {api_code: set() for api_code in api_codes}
 
         print(
             f"Run CSV Warehouse ETL run_id={run_id}, "
             f"window={start_dt:%Y%m%d}-{end_dt:%Y%m%d}, dataset=training_course, "
-            f"resume={is_resume_run}, monthly_dir={args.monthly_dir}, yearly_dir={args.yearly_dir}"
+            f"run_mode={effective_run_mode}, resume={is_resume_run}, "
+            f"collection_date={args.collection_date}, monthly_dir={args.monthly_dir}, "
+            f"yearly_dir={args.yearly_dir}, integrated_dir={args.integrated_dir}"
         )
 
         with create_session() as session:
@@ -150,28 +159,56 @@ def run_csv_warehouse_etl(args: Any) -> int:
                     )
                     expected_count += int(result.get("expected_count", 0))
                     actual_count += int(result.get("collected_count", 0))
+                    if not result.get("skipped"):
+                        collected_years_by_api[api_code].add(int(period_start[:4]))
 
-        snapshots = merge_yearly_snapshots(
-            api_codes,
-            years,
-            args.monthly_dir,
-            args.yearly_dir,
-            args.checkpoint_dir,
-            args.encoding,
-        )
-        write_data_snapshot_log(data_snapshot_log_path, run_id, datetime.now(), snapshots)
+        if args.force_publish:
+            publish_api_codes = api_codes
+            publish_years_by_api = {api_code: set(years) for api_code in api_codes}
+        else:
+            publish_years_by_api = {api_code: year_set for api_code, year_set in collected_years_by_api.items() if year_set}
+            publish_api_codes = list(publish_years_by_api)
+
+        yearly_snapshots = []
+        snapshots = []
+        if publish_api_codes:
+            for api_code in publish_api_codes:
+                yearly_snapshots.extend(
+                    merge_yearly_snapshots(
+                        [api_code],
+                        sorted(publish_years_by_api[api_code]),
+                        args.monthly_dir,
+                        args.yearly_dir,
+                        args.checkpoint_dir,
+                        args.encoding,
+                    )
+                )
+            snapshots = publish_integrated_snapshots(
+                publish_api_codes,
+                args.yearly_dir,
+                args.integrated_dir,
+                args.encoding,
+            )
+            write_data_snapshot_log(data_snapshot_log_path, run_id, datetime.now(), snapshots)
+        else:
+            print("Publish skipped: all monthly periods were skipped and --force-publish was not set.")
+
         changed_count = sum(1 for snapshot in snapshots if snapshot.is_changed)
         status = "PASS"
         if expected_count != actual_count:
             message = (
                 f"PASS with warning: expected_hint({expected_count})와 "
                 f"actual_count({actual_count})가 다릅니다.; "
-                f"yearly_files={len(snapshots)}, changed_files={changed_count}"
+                f"yearly_files={len(yearly_snapshots)}, "
+                f"integrated_files={len(snapshots)}, changed_files={changed_count}, "
+                f"publish={'run' if publish_api_codes else 'skipped'}"
             )
         else:
             message = (
-                f"PASS: refreshed monthly CSV and yearly snapshots in {args.yearly_dir}; "
-                f"yearly_files={len(snapshots)}, changed_files={changed_count}"
+                "PASS: collection completed; "
+                f"yearly_files={len(yearly_snapshots)}, "
+                f"integrated_files={len(snapshots)}, changed_files={changed_count}, "
+                f"publish={'run' if publish_api_codes else 'skipped'}"
             )
         print(message)
 
@@ -210,17 +247,12 @@ def run_csv_warehouse_etl(args: Any) -> int:
                 "run_id": run_id,
                 "started_at": started_at.isoformat(timespec="seconds"),
                 "finished_at": finished_at.isoformat(timespec="seconds"),
-                "dataset": "training_course",
                 "status": status,
                 "expected_count": expected_count,
                 "actual_count": actual_count,
                 "window_start": window_start,
                 "window_end": window_end,
-                "months_back": args.months_back,
-                "months_forward": args.months_forward,
-                "is_resume": is_resume_run,
                 "duration_seconds": duration_seconds,
                 "message": final_message,
             },
         )
-

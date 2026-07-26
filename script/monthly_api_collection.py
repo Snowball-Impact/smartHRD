@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from work24_collector.client import create_session
@@ -124,6 +125,9 @@ def settings_from_args(args: argparse.Namespace) -> CollectorSettings:
         encoding=args.encoding,
         resume=args.resume,
         simple_filename=args.simple_filename,
+        run_mode="resume" if args.resume else "scheduled",
+        collection_refresh_days=7,
+        collection_date=datetime.now().strftime("%Y%m%d"),
     )
 
 

@@ -39,6 +39,9 @@ class CollectorSettings:
     encoding: str
     resume: bool
     simple_filename: bool
+    run_mode: str
+    collection_refresh_days: int
+    collection_date: str
 
 
 API_SPECS = {

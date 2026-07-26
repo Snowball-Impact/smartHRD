@@ -22,10 +22,10 @@
 
 - Python ETL 자동 실행
 - 고용24 API 자동 수집
-- Validation 통과 시에만 Power BI 원본 yearly CSV 재생성
-- 실패 시 기존 yearly CSV 유지
+- Validation 통과 시에만 Power BI 원본 integrated CSV 재생성
+- 실패 시 기존 yearly/integrated CSV 유지
 - ETL 로그 CSV 기록
-- yearly CSV checksum 기반 실제 데이터 변경 여부 기록
+- integrated CSV checksum 기반 실제 데이터 변경 여부 기록
 - Windows Task Scheduler 연동
 - On-premises Data Gateway 기반 Power BI Service 예약 새로고침 지원
 
@@ -60,7 +60,7 @@
 
 - 매주 토요일 새벽 ETL 자동 실행 가능
 - 과거 6개월 ~ 미래 6개월 범위 자동 수집 가능
-- `dataset/work24/yearly`가 Power BI의 안정 원본으로 유지됨
-- Validation 실패 시 기존 yearly CSV가 보존됨
+- `dataset/work24/integrated`가 Power BI의 안정 원본으로 유지됨
+- Validation 실패 시 기존 yearly/integrated CSV가 보존됨
 - `warehouse/logs/etl_log.csv`로 운영 현황을 Power BI에서 시각화 가능
-- `warehouse/logs/data_snapshot_log.csv`로 yearly CSV 변경 여부를 Power BI에서 시각화 가능
+- `warehouse/logs/data_snapshot_log.csv`로 integrated CSV 변경 여부를 Power BI에서 시각화 가능

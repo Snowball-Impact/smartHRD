@@ -6,7 +6,14 @@ import argparse
 import sys
 from pathlib import Path
 
-from csv_warehouse.paths import DEFAULT_CHECKPOINT_DIR, DEFAULT_ENV_FILE, DEFAULT_MONTHLY_DIR, DEFAULT_WAREHOUSE_DIR, DEFAULT_YEARLY_DIR
+from csv_warehouse.paths import (
+    DEFAULT_CHECKPOINT_DIR,
+    DEFAULT_ENV_FILE,
+    DEFAULT_INTEGRATED_DIR,
+    DEFAULT_MONTHLY_DIR,
+    DEFAULT_WAREHOUSE_DIR,
+    DEFAULT_YEARLY_DIR,
+)
 from csv_warehouse.pipeline import run_csv_warehouse_etl
 from work24_collector.config import (
     API_COLLECTION_ORDER,
@@ -31,12 +38,33 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--warehouse-dir", type=Path, default=DEFAULT_WAREHOUSE_DIR)
     parser.add_argument("--monthly-dir", type=Path, default=DEFAULT_MONTHLY_DIR)
     parser.add_argument("--yearly-dir", type=Path, default=DEFAULT_YEARLY_DIR)
+    parser.add_argument("--integrated-dir", type=Path, default=DEFAULT_INTEGRATED_DIR)
     parser.add_argument("--checkpoint-dir", type=Path, default=DEFAULT_CHECKPOINT_DIR)
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
     parser.add_argument(
         "--fresh-run",
         action="store_true",
-        help="Recollect monthly files from page 1 instead of resuming completed checkpoints.",
+        help="Deprecated alias for --run-mode scheduled.",
+    )
+    parser.add_argument(
+        "--run-mode",
+        choices=["auto", "scheduled", "resume"],
+        default="auto",
+        help=(
+            "Collection mode. auto recollects completed periods when the checkpoint collection date "
+            "is old enough, otherwise resumes/skips completed periods."
+        ),
+    )
+    parser.add_argument(
+        "--collection-refresh-days",
+        type=int,
+        default=7,
+        help="In auto mode, recollect completed monthly files when the checkpoint collection date is this many days old.",
+    )
+    parser.add_argument(
+        "--force-publish",
+        action="store_true",
+        help="Run yearly and integrated publish even when every monthly period was skipped.",
     )
     parser.add_argument("--page-size", type=int, default=DEFAULT_PAGE_SIZE)
     parser.add_argument("--timeout-seconds", type=int, default=DEFAULT_TIMEOUT_SECONDS)
@@ -79,6 +107,8 @@ def validate_args(args: argparse.Namespace) -> str | None:
         return "--period-retries must be 0 or greater."
     if args.checkpoint_retention_days < 0:
         return "--checkpoint-retention-days must be 0 or greater."
+    if args.collection_refresh_days < 0:
+        return "--collection-refresh-days must be 0 or greater."
     return None
 
 

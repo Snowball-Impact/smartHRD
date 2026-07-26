@@ -73,14 +73,47 @@ def collect_period(
                     and total_pages
                     and next_page > total_pages
                 )
-                if (checkpoint.get("completed") and collected_count == checkpoint_count) or legacy_complete:
+                should_recollect_completed = (
+                    settings.run_mode == "auto"
+                    and (checkpoint.get("completed") or legacy_complete)
+                    and is_checkpoint_stale(checkpoint, settings.collection_date, settings.collection_refresh_days)
+                )
+                if should_recollect_completed:
+                    print(
+                        "Completed checkpoint is old enough for scheduled recollection. "
+                        f"[{spec.display_name} {start}-{end}] "
+                        f"checkpoint_collection_date={checkpoint_collection_date(checkpoint) or 'unknown'}, "
+                        f"current_collection_date={settings.collection_date}, "
+                        f"refresh_days={settings.collection_refresh_days}. Restarting from page 1."
+                    )
+                    expected_count = 0
+                    collected_count = 0
+                    next_page = 1
+                    csv_has_header = False
+                    last_saved_count = 0
+                    last_saved_page = 0
+                    last_page_row_count = 0
+                    checkpoint = None
+                    log_row["skipped"] = False
+                elif (checkpoint.get("completed") and collected_count == checkpoint_count) or legacy_complete:
                     print(
                         "Already complete "
                         f"[{spec.display_name} {start}-{end}] "
                         f"rows={collected_count}, expected_hint={expected_count}, skip"
                     )
                     if legacy_complete and not checkpoint.get("completed"):
-                        save_completed_checkpoint(cp_path, out_path, spec, start, end, expected_count, next_page, collected_count)
+                        save_completed_checkpoint(
+                            cp_path,
+                            out_path,
+                            settings,
+                            spec,
+                            start,
+                            end,
+                            expected_count,
+                            next_page,
+                            collected_count,
+                        )
+                    log_row["skipped"] = True
                     log_success(settings, log_row, expected_count, collected_count)
                     return log_row
                 if next_page > 1 and collected_count != checkpoint_count:
@@ -210,7 +243,8 @@ def collect_period(
                 "Using collected rows because API page traversal reached the final short page."
             )
 
-        save_completed_checkpoint(cp_path, out_path, spec, start, end, expected_count, next_page, collected_count)
+        save_completed_checkpoint(cp_path, out_path, settings, spec, start, end, expected_count, next_page, collected_count)
+        log_row["skipped"] = False
         log_success(settings, log_row, expected_count, collected_count)
         print(f"Saved {collected_count} rows: {out_path}")
         return log_row
@@ -226,6 +260,7 @@ def collect_period(
         save_failure_checkpoint(
             cp_path,
             out_path,
+            settings,
             spec,
             start,
             end,
@@ -395,6 +430,8 @@ def save_progress(
             "output_file": str(out_path),
             "last_saved_rows": len(chunk_rows),
             "write_mode": "overwrite" if include_header else "append",
+            "collection_date": settings.collection_date,
+            "run_mode": settings.run_mode,
             "updated_at": updated_at,
             "elapsed_seconds": round(total_seconds, 3),
             "avg_rows_per_sec": round(avg_rows_sec, 3),
@@ -417,6 +454,7 @@ def save_progress(
 def save_failure_checkpoint(
     cp_path: Path,
     out_path: Path,
+    settings: CollectorSettings,
     spec: ApiSpec,
     start: str,
     end: str,
@@ -437,6 +475,8 @@ def save_failure_checkpoint(
             "collected_count": collected_count,
             "output_file": str(out_path),
             "error_message": str(exc),
+            "collection_date": settings.collection_date,
+            "run_mode": settings.run_mode,
             "updated_at": updated_at,
         },
     )
@@ -451,6 +491,7 @@ def save_failure_checkpoint(
 def save_completed_checkpoint(
     cp_path: Path,
     out_path: Path,
+    settings: CollectorSettings,
     spec: ApiSpec,
     start: str,
     end: str,
@@ -471,9 +512,28 @@ def save_completed_checkpoint(
             "output_file": str(out_path),
             "completed": True,
             "completion_rule": "final_short_page",
+            "collected_at": updated_at,
+            "collection_date": settings.collection_date,
+            "run_mode": settings.run_mode,
             "updated_at": updated_at,
         },
     )
+
+
+def checkpoint_collection_date(checkpoint: dict[str, Any]) -> str:
+    return str(checkpoint.get("collection_date") or "")
+
+
+def is_checkpoint_stale(checkpoint: dict[str, Any], collection_date: str, refresh_days: int) -> bool:
+    previous_date = checkpoint_collection_date(checkpoint)
+    if not previous_date:
+        return True
+    try:
+        previous = datetime.strptime(previous_date, "%Y%m%d")
+        current = datetime.strptime(collection_date, "%Y%m%d")
+    except ValueError:
+        return True
+    return (current - previous).days >= refresh_days
 
 
 def log_success(settings: CollectorSettings, log_row: dict[str, Any], expected_count: int, row_count: int) -> None:

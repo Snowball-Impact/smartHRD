@@ -9,8 +9,7 @@ script/monthly_api_collection.py
 ```
 
 The script keeps the CSV-based monthly workflow while making monthly collection repeatable from the command line.
-
-It does not build SQLite tables yet.
+It is the lower-level collector reused by the CSV Warehouse Demo ETL.
 
 ## Code Structure
 
@@ -25,7 +24,8 @@ The command stays the same, but the implementation is split into small modules:
 | `script/work24_collector/client.py` | URL building, HTTP session reuse, retry logic |
 | `script/work24_collector/storage.py` | CSV, checkpoint, and run-log file handling |
 | `script/work24_collector/collector.py` | Monthly collection orchestration |
-| `script/yearly_csv_merge.py` | Monthly-to-yearly CSV merge for Power BI import |
+| `script/yearly_csv_merge.py` | Monthly-to-yearly CSV merge |
+| `script/csv_warehouse_etl.py` | Demo ETL entry point that collects monthly CSV, validates, publishes yearly/integrated CSV, and writes logs |
 
 ## Supported APIs
 
@@ -82,15 +82,13 @@ Collect the three non-national-card APIs for June 2026:
 python script\monthly_api_collection.py --api non-national-card --start 20260601 --end 20260630 --simple-filename --resume --workers 2 --progress-every-pages 10
 ```
 
-Daily rolling refresh policy is documented in `docs/REFRESH_POLICY.md`.
-
-The current collection CLI does not yet provide `--refresh-window daily`.
-Until that option is implemented, calculate the month-based window manually and pass `--start` and `--end`.
+The Demo ETL calculates the default weekly refresh window automatically.
+Use `script/csv_warehouse_etl.py` for scheduled operation, and use this monthly collection CLI for manual backfills or targeted recollection.
 
 Example for 2026-07-11:
 
 ```powershell
-python script\monthly_api_collection.py --api all --start 20250701 --end 20270131 --simple-filename --resume --workers 2 --progress-every-pages 10
+python script\csv_warehouse_etl.py --api all --as-of 20260711 --months-back 6 --months-forward 6 --period-retries 1 --workers 2 --progress-every-pages 10
 ```
 
 Output:
@@ -269,7 +267,6 @@ Failure checkpoint [국민내일배움카드훈련과정 20240101-20240131] rows
 ## Notes
 
 - Raw API response columns are preserved in the CSV output.
-- No SQLite loading is performed in this script.
-- Daily rolling refresh is a policy/design decision; this script still receives explicit `--start` and `--end` dates.
+- Scheduled Demo operation should use `script/csv_warehouse_etl.py`; this script still receives explicit `--start` and `--end` dates.
 - Existing notebooks are not modified.
-- If the API expected count differs from collected row count, the run is marked as failed and the partial CSV/checkpoint are kept for investigation.
+- API expected count is a hint. The Demo ETL records expected/actual mismatches as warnings when page traversal reaches the final short page.

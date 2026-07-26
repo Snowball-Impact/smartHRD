@@ -3,7 +3,7 @@
 ## 분석
 
 - [x] 현재 수집 스크립트 분석
-- [ ] Power BI yearly CSV 원본 영향 검증
+- [ ] Power BI integrated CSV 원본 영향 검증
 - [ ] 운영 현황 Dashboard 요구사항 확정
 
 ## CSV Warehouse
@@ -20,12 +20,13 @@
 - [x] API 수집/checkpoint 검증 작성
 - [x] ETL CSV 로그 작성
 - [x] yearly CSV checksum 변경 로그 작성
+- [x] API별 integrated CSV publish 작성
 - [x] checkpoint 30일 보존 cleanup 작성
 - [ ] 실제 API key 환경에서 end-to-end 수집 검증
 
 ## Power BI
 
-- [ ] Power BI Desktop 원본을 `dataset/work24/yearly`로 유지
+- [ ] Power BI Desktop 원본을 `dataset/work24/integrated`로 변경
 - [ ] On-premises Data Gateway 경로 등록
 - [ ] Power BI Service 예약 새로고침 설정
 - [ ] 운영 현황 Dashboard 페이지 설계

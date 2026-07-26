@@ -33,6 +33,7 @@ API
 -> Validation
 -> dataset/work24/monthly
 -> dataset/work24/yearly
+-> dataset/work24/integrated
 -> Power BI Service scheduled refresh
 ```
 
@@ -43,7 +44,7 @@ API
 - 매주 토요일 새벽
 - 기본값은 현재월 기준 과거 6개월 ~ 미래 6개월
 - `--months-back`, `--months-forward` 인자로 수집 범위 변경 가능
-- 매주 전체 범위를 다시 수집하여 yearly CSV를 재생성
+- 매주 전체 범위를 다시 수집하여 yearly CSV와 integrated CSV를 재생성
 - 증분 업데이트는 Demo에서 구현하지 않음
 
 예시 기준일 `2026-07-12`:
@@ -59,7 +60,7 @@ API
 Power BI 원본:
 
 ```text
-dataset/work24/yearly/
+dataset/work24/integrated/
 ```
 
 월별 수집 파일:
@@ -73,6 +74,14 @@ dataset/work24/monthly/<API명>/<API명>_YYYYMM.csv
 ```text
 dataset/work24/yearly/<API명>/<API명>_YYYY.csv
 ```
+
+API별 통합 파일:
+
+```text
+dataset/work24/integrated/<API명>/<API명>.csv
+```
+
+`integrated` 파일은 API별 yearly CSV를 하나로 합친 파일이며, 각 API 원본 컬럼을 그대로 보존한다.
 
 ETL 로그:
 
@@ -89,15 +98,11 @@ warehouse/checkpoints/*.json
 run_id
 started_at
 finished_at
-dataset
 status
 expected_count
 actual_count
 window_start
 window_end
-months_back
-months_forward
-is_resume
 duration_seconds
 message
 ```
@@ -153,8 +158,9 @@ Demo ETL은 운영 추적을 위해 다음 메타 컬럼을 앞에 추가한다.
 - 월별 CSV 저장 성공 여부
 - checkpoint 기반 완료/재개 가능 여부
 - 연도별 CSV 병합 성공 여부
+- API별 통합 CSV 병합 성공 여부
 - API expected_count 힌트와 actual_count 차이 warning 기록
-- yearly CSV 파일 checksum 기반 변경 여부 기록
+- integrated CSV 파일 checksum 기반 변경 여부 기록
 - CSV 저장 성공 여부
 
 TODO:

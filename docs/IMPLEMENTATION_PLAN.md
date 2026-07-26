@@ -17,7 +17,7 @@
 - 기존 collector 모듈 재사용
 - Demo 운영용 진입점 추가
 - 매주 수집 window 자동 계산
-- 월별 CSV 수집 후 Power BI용 yearly CSV 재생성
+- 월별 CSV 수집 후 yearly CSV와 Power BI용 integrated CSV 재생성
 
 산출물:
 
@@ -34,8 +34,9 @@ script/csv_warehouse/
 - `warehouse/checkpoints`
 - `dataset/work24/monthly`
 - `dataset/work24/yearly`
+- `dataset/work24/integrated`
 
-Power BI는 `dataset/work24/yearly`를 조회한다.
+Power BI는 `dataset/work24/integrated`를 조회한다.
 
 ---
 
@@ -48,9 +49,10 @@ Power BI는 `dataset/work24/yearly`를 조회한다.
 - checkpoint 기반 완료/재개 가능 여부
 - API expected_count 힌트와 actual_count 차이 warning 기록
 - yearly CSV 병합 성공 여부
+- integrated CSV 병합 성공 여부
 - CSV 저장 성공 여부
 
-Validation 실패 시 기존 yearly CSV는 유지한다.
+Validation 실패 시 기존 yearly/integrated CSV는 유지한다.
 
 ---
 
@@ -69,7 +71,6 @@ warehouse/logs/data_snapshot_log.csv
 run_id
 started_at
 finished_at
-dataset
 status
 expected_count
 actual_count
@@ -77,7 +78,7 @@ duration_seconds
 message
 ```
 
-`data_snapshot_log.csv`는 yearly CSV 파일별 checksum, 이전 checksum, row_count, file_size_bytes, is_changed를 기록한다.
+`data_snapshot_log.csv`는 integrated CSV 파일별 checksum, 이전 checksum, row_count, file_size_bytes, is_changed를 기록한다.
 
 ETL cleanup은 30일이 지난 `warehouse/checkpoints/*.json` 파일을 삭제한다.
 
@@ -101,7 +102,7 @@ script/run_csv_warehouse_etl.bat
 
 ## Step 7. Power BI Gateway 운영 문서 작성
 
-- Power BI Desktop 원본 경로를 `dataset/work24/yearly`로 유지
+- Power BI Desktop 원본 경로를 `dataset/work24/integrated`로 설정
 - On-premises Data Gateway에 동일 경로 등록
 - Power BI Service에서 예약 새로고침 설정
 - PBIX 자동 Publish는 제외
@@ -117,7 +118,7 @@ script/run_csv_warehouse_etl.bat
 - 최근 실행 상태
 - 최근 성공 시각
 - 최근 데이터 변경 여부
-- 변경된 yearly 파일 수
+- 변경된 integrated 파일 수
 - expected_count vs actual_count
 - duration_seconds 추이
 - 실패 메시지
